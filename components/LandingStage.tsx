@@ -5,6 +5,7 @@ import Link from "next/link";
 import HalftoneField from "./HalftoneField";
 import EverestPattern from "./EverestPattern";
 import NavLogo from "./NavLogo";
+import SiteFooter from "./SiteFooter";
 import { ArrowRight, User } from "lucide-react";
 import { useAppSelector } from "@/store/hooks";
 
@@ -125,16 +126,7 @@ export default function LandingStage({
       </div>
 
       {/* ── Footer bar ── */}
-      <motion.footer
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.6, delay: 0.75 }}
-        className="relative z-10 flex w-full items-center justify-between border-t border-black/10 px-6 py-3 sm:px-10"
-      >
-        <span className="font-mono text-[9px] uppercase tracking-[0.3em] text-ash" style={{ fontFamily: MONO }}>REBELIVE</span>
-        <span className="font-mono text-[9px] uppercase tracking-[0.3em] text-ash" style={{ fontFamily: MONO }}>WAKE · FUEL · REBEL</span>
-        <span className="font-mono text-[9px] uppercase tracking-[0.3em] text-ash" style={{ fontFamily: MONO }}>01 / 25</span>
-      </motion.footer>
+      <SiteFooter />
     </motion.div>
   );
 }

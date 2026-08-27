@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import NavLogo from "./NavLogo";
+import SiteFooter from "./SiteFooter";
 import MemberCard from "./MemberCard";
 import { PERSONAS } from "@/data/personas";
 import { ScoreResult } from "@/lib/quiz";
@@ -179,25 +180,10 @@ export default function ResultStage({
       </div>
 
       {/* ── Footer ── */}
-      <div
-        className={`relative z-20 flex w-full items-center justify-between px-6 py-2.5 sm:px-10 border-t ${
-          isApex
-            ? "border-white/10 text-white/40"
-            : isCapella
-            ? "border-black/10 text-black/45"
-            : "border-black/10 text-black/45"
-        }`}
-      >
-        <span className="font-mono text-[9px] uppercase tracking-[0.3em]" style={{ fontFamily: MONO }}>
-          REBELIVE
-        </span>
-        <span className="font-mono text-[9px] uppercase tracking-[0.3em]" style={{ fontFamily: MONO }}>
-          WAKE · FUEL · REBEL
-        </span>
-        <span className="font-mono text-[9px] uppercase tracking-[0.3em]" style={{ fontFamily: MONO }}>
-          05 / 05
-        </span>
-      </div>
+      <SiteFooter
+        borderColor={isApex ? "border-white/10" : "border-black/10"}
+        textColor={isApex ? "text-white/45" : "text-black/45"}
+      />
     </motion.div>
   );
 }

@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import HalftoneField from "./HalftoneField";
 import EverestPattern from "./EverestPattern";
 import NavLogo from "./NavLogo";
+import SiteFooter from "./SiteFooter";
 import ProgressRail from "./ProgressRail";
 import { ShuffledQuestion } from "@/lib/quiz";
 import { Persona } from "@/data/questions";
@@ -141,11 +142,7 @@ export default function QuizStage({
       </div>
 
       {/* ── Footer ── */}
-      <div className="relative z-10 flex w-full items-center justify-between border-t border-black/10 px-6 py-3 sm:px-10">
-        <span className="font-mono text-[9px] uppercase tracking-[0.3em] text-ash" style={{ fontFamily: MONO }}>REBELIVE</span>
-        <span className="font-mono text-[9px] uppercase tracking-[0.3em] text-ash" style={{ fontFamily: MONO }}>WAKE · FUEL · REBEL</span>
-        <span className="font-mono text-[9px] uppercase tracking-[0.3em] text-ash" style={{ fontFamily: MONO }}>0{index + 1} / 0{total}</span>
-      </div>
+      <SiteFooter />
     </motion.div>
   );
 }

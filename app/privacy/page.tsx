@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import NavLogo from "@/components/NavLogo";
-import Image from "next/image";
+import SiteFooter from "@/components/SiteFooter";
 
 export const metadata: Metadata = {
   title: "Privacy Policy — REBELIVE",
@@ -166,7 +166,7 @@ export default function PrivacyPage() {
           </Section>
         </div>
 
-        <Footer active="privacy" />
+        <SiteFooter />
       </div>
     </>
   );
@@ -207,34 +207,3 @@ function BulletList({ items }: { items: string[] }) {
   );
 }
 
-function Footer({ active }: { active: "terms" | "privacy" }) {
-  return (
-    <div
-      className="border-t border-black/10 px-6 py-5 sm:px-12 flex flex-col sm:flex-row items-center justify-between gap-3"
-      style={{ backgroundColor: "#f0efeb" }}
-    >
-      <p className="font-mono text-[8px] uppercase tracking-[0.2em] text-black/30" style={{ fontFamily: MONO }}>
-        © Oxytrium Dynamics Private Limited
-      </p>
-      <p className="font-mono text-[9px] uppercase tracking-[0.3em] text-black/35" style={{ fontFamily: MONO }}>
-        Wake · Fuel · Rebel
-      </p>
-      <div className="flex gap-4">
-        <Link
-          href="/privacy"
-          className={`font-mono text-[8px] uppercase tracking-[0.18em] transition-colors hover:text-black/70 ${active === "privacy" ? "text-black/80" : "text-black/40"}`}
-          style={{ fontFamily: MONO }}
-        >
-          Privacy Policy
-        </Link>
-        <Link
-          href="/terms"
-          className={`font-mono text-[8px] uppercase tracking-[0.18em] transition-colors hover:text-black/70 ${active === "terms" ? "text-black/80" : "text-black/40"}`}
-          style={{ fontFamily: MONO }}
-        >
-          Terms of Service
-        </Link>
-      </div>
-    </div>
-  );
-}

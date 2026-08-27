@@ -41,28 +41,36 @@ export default function MemberCard({
     setShareError(null);
 
     try {
-      const html2canvas = (await import("html2canvas")).default;
+      /**
+       * dom-to-image-more uses SVG foreignObject — the browser renders the
+       * actual DOM natively so all modern CSS (oklab, oklch, color-mix, etc.)
+       * works without any parsing. html2canvas was failing on Tailwind v4's
+       * oklab() color output.
+       */
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const domToImage = (await import("dom-to-image-more")) as any;
 
-      const canvas = await html2canvas(cardFrontRef.current, {
-        useCORS: true,
-        allowTaint: true,
+      const el = cardFrontRef.current;
+      const { width, height } = el.getBoundingClientRect();
+
+      const blob: Blob = await domToImage.toBlob(el, {
+        width,
+        height,
+        quality: 1,
         scale: 2,
-        backgroundColor: isApex ? "#090909" : isCapella ? "#f5f5f3" : "#fcfcfc",
-        logging: false,
-        imageTimeout: 0,
-        removeContainer: true,
+        style: {
+          // Ensure the card face is fully visible (not flipped)
+          transform: "none",
+          backfaceVisibility: "visible",
+        },
       });
 
-      const blob = await new Promise<Blob | null>((res) =>
-        canvas.toBlob((b) => res(b), "image/png", 1)
-      );
-
-      if (!blob) throw new Error("Canvas export failed");
+      if (!blob) throw new Error("Image export failed");
 
       const fileName = `rebelive-${persona.id.toLowerCase()}-card.png`;
       const file = new File([blob], fileName, { type: "image/png" });
 
-      // Try native share sheet (mobile)
+      // Try native share sheet (mobile — Instagram, WhatsApp, X status, etc.)
       let shared = false;
       if (
         typeof navigator !== "undefined" &&
@@ -77,16 +85,16 @@ export default function MemberCard({
           });
           shared = true;
         } catch (shareErr: unknown) {
-          // User cancelled share sheet — treat as success if it was a user abort
           if (shareErr instanceof Error && shareErr.name === "AbortError") {
+            // User cancelled the share sheet — just reset
             setShareState("idle");
             return;
           }
-          // Otherwise fall through to download
+          // Other error — fall through to download
         }
       }
 
-      // Desktop fallback — always download
+      // Desktop fallback: download the PNG
       if (!shared) {
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
