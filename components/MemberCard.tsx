@@ -126,6 +126,7 @@ export default function MemberCard({
           height: "min(530px, 66vh)",
           aspectRatio: "1 / 1.56",
           perspective: "1400px",
+          WebkitPerspective: "1400px",
         }}
         onClick={() => setFlipped((f) => !f)}
       >
@@ -136,6 +137,7 @@ export default function MemberCard({
           className="relative h-full w-full"
           style={{
             transformStyle: "preserve-3d",
+            WebkitTransformStyle: "preserve-3d",
           }}
         >
           {/* ════════════════════════════════════════════════════
@@ -152,6 +154,11 @@ export default function MemberCard({
             style={{
               backfaceVisibility: "hidden",
               WebkitBackfaceVisibility: "hidden",
+              transform: "rotateY(0deg) translateZ(1px)",
+              WebkitTransform: "rotateY(0deg) translateZ(1px)",
+              opacity: flipped ? 0 : 1,
+              pointerEvents: flipped ? "none" : "auto",
+              transition: "opacity 0.25s ease",
               boxShadow: isApex
                 ? "0 25px 60px -15px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.08)"
                 : "0 25px 60px -15px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.06)",
@@ -357,7 +364,11 @@ export default function MemberCard({
             style={{
               backfaceVisibility: "hidden",
               WebkitBackfaceVisibility: "hidden",
-              transform: "rotateY(180deg)",
+              transform: "rotateY(180deg) translateZ(1px)",
+              WebkitTransform: "rotateY(180deg) translateZ(1px)",
+              opacity: flipped ? 1 : 0,
+              pointerEvents: flipped ? "auto" : "none",
+              transition: "opacity 0.25s ease",
               boxShadow: isApex
                 ? "0 30px 70px -15px rgba(0, 0, 0, 0.95), 0 15px 35px -10px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.12), inset 0 1px 1px 0 rgba(255, 255, 255, 0.25)"
                 : "0 30px 70px -15px rgba(0, 0, 0, 0.32), 0 15px 35px -10px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.08), inset 0 1px 1.5px 0 rgba(255, 255, 255, 0.95)",
