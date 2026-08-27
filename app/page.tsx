@@ -1,69 +1,115 @@
-import Image from "next/image";
+"use client";
+
+import { useState, useEffect } from "react";
+import { AnimatePresence } from "framer-motion";
+import LandingStage from "@/components/LandingStage";
+import QuizStage from "@/components/QuizStage";
+import ResultStage from "@/components/ResultStage";
+import ProfileStage from "@/components/ProfileStage";
+import { pickSession, scoreSession, Answer, ShuffledQuestion, ScoreResult } from "@/lib/quiz";
+import { Persona } from "@/data/questions";
+import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import { getMe } from "@/store/slices/authslice";
+
+type Stage = "landing" | "quiz" | "result" | "profile";
 
 export default function Home() {
+  const dispatch = useAppDispatch();
+  const { isAuthenticated, user, loading } = useAppSelector((s) => s.auth);
+
+  const [stage, setStage] = useState<Stage>("landing");
+  const [session, setSession] = useState<ShuffledQuestion[]>([]);
+  const [qIndex, setQIndex] = useState(0);
+  const [answers, setAnswers] = useState<Answer[]>([]);
+  const [result, setResult] = useState<ScoreResult | null>(null);
+
+  // Hydrate auth state on first load
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const token = sessionStorage.getItem("accessToken");
+      if (token && !isAuthenticated) {
+        dispatch(getMe());
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Switch to profile if user is authenticated
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      setStage("profile");
+    }
+  }, [isAuthenticated, user]);
+
+  function startTest() {
+    setSession(pickSession());
+    setAnswers([]);
+    setQIndex(0);
+    setStage("quiz");
+  }
+
+  function handleAnswer(persona: Persona) {
+    const next = [...answers, { questionId: session[qIndex].id, persona }];
+    setAnswers(next);
+    if (qIndex + 1 < session.length) {
+      setQIndex(qIndex + 1);
+    } else {
+      setResult(scoreSession(next));
+      setStage("result");
+    }
+  }
+
+  function restart() {
+    setResult(null);
+    setStage("landing");
+  }
+
+  // While checking auth on first load, show nothing (prevents flash)
+  if (loading && !isAuthenticated) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center bg-[#f0efeb]">
+        <span
+          className="font-mono text-[9px] uppercase tracking-[0.35em] text-[#0a0a0a]/30"
+          style={{ fontFamily: "JetBrains Mono, Courier New, monospace" }}
+        >
+          Loading…
+        </span>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+    <div className="fixed inset-0 h-[100dvh] w-[100dvw] overflow-hidden bg-ink">
+      <AnimatePresence mode="wait">
+        {stage === "profile" && isAuthenticated && user && (
+          <ProfileStage
+            key="profile"
+            user={user}
+            onStartQuiz={() => {
+              // Allow logged-in user to retake the quiz (result will save directly)
+              startTest();
+            }}
+          />
+        )}
+
+        {stage === "landing" && !isAuthenticated && (
+          <LandingStage key="landing" onStart={startTest} />
+        )}
+
+        {stage === "quiz" && session.length > 0 && (
+          <QuizStage
+            key="quiz"
+            question={session[qIndex]}
+            index={qIndex}
+            total={session.length}
+            onAnswer={handleAnswer}
+          />
+        )}
+
+        {stage === "result" && result && (
+          <ResultStage key="result" result={result} onRestart={restart} />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
