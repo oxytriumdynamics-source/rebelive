@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 
 /**
  * NavLogo — uses the real REBELIVE brand PNG from /public/brand.
@@ -15,7 +16,7 @@ export default function NavLogo({
   className?: string;
 }) {
   return (
-    <div className={`relative flex items-center ${className}`} style={{ width, height: width * 0.32 }}>
+    <Link href="/" aria-label="REBELIVE Home" className={`relative flex items-center cursor-pointer transition-opacity hover:opacity-75 ${className}`} style={{ width, height: width * 0.32 }}>
       <Image
         src="/brand/REBELIVE Logo Black.png"
         alt="REBELIVE"
@@ -25,6 +26,6 @@ export default function NavLogo({
         className="object-contain object-left"
         style={tone === "dark" ? { filter: "invert(1) brightness(1.1)" } : undefined}
       />
-    </div>
+    </Link>
   );
 }

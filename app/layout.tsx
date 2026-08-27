@@ -28,8 +28,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className="antialiased overscroll-none">
+    <html lang="en" suppressHydrationWarning>
+      <body className="antialiased overscroll-none" suppressHydrationWarning>
         <StoreProvider>{children}</StoreProvider>
       </body>
     </html>

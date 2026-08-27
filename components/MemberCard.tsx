@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 import Image from "next/image";
 import { PersonaProfile } from "@/data/personas";
-import { RotateCcw } from "lucide-react";
+import { RotateCcw, Share2, Check } from "lucide-react";
 
 const MONO = "JetBrains Mono, Courier New, monospace";
 
@@ -24,14 +24,89 @@ export default function MemberCard({
   memberName?: string;
 }) {
   const [flipped, setFlipped] = useState(false);
+  const [shareState, setShareState] = useState<"idle" | "loading" | "done">("idle");
   const issuedDate = useMemo(() => getIssuedDate(), []);
+  const cardFrontRef = useRef<HTMLDivElement>(null);
 
   const isApex = persona.id === "APEX";
   const isCapella = persona.id === "CAPELLA";
   const isAviva = persona.id === "AVIVA";
 
-  
 
+  const [shareError, setShareError] = useState<string | null>(null);
+
+  const shareCard = useCallback(async () => {
+    if (!cardFrontRef.current || shareState === "loading") return;
+    setShareState("loading");
+    setShareError(null);
+
+    try {
+      const html2canvas = (await import("html2canvas")).default;
+
+      const canvas = await html2canvas(cardFrontRef.current, {
+        useCORS: true,
+        allowTaint: true,
+        scale: 2,
+        backgroundColor: isApex ? "#090909" : isCapella ? "#f5f5f3" : "#fcfcfc",
+        logging: false,
+        imageTimeout: 0,
+        removeContainer: true,
+      });
+
+      const blob = await new Promise<Blob | null>((res) =>
+        canvas.toBlob((b) => res(b), "image/png", 1)
+      );
+
+      if (!blob) throw new Error("Canvas export failed");
+
+      const fileName = `rebelive-${persona.id.toLowerCase()}-card.png`;
+      const file = new File([blob], fileName, { type: "image/png" });
+
+      // Try native share sheet (mobile)
+      let shared = false;
+      if (
+        typeof navigator !== "undefined" &&
+        navigator.canShare &&
+        navigator.canShare({ files: [file] })
+      ) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: `My REBELIVE ${persona.name} Identity`,
+            text: `I'm a ${persona.name} — ${persona.title}. Discover your rebel identity at rebelive.com`,
+          });
+          shared = true;
+        } catch (shareErr: unknown) {
+          // User cancelled share sheet — treat as success if it was a user abort
+          if (shareErr instanceof Error && shareErr.name === "AbortError") {
+            setShareState("idle");
+            return;
+          }
+          // Otherwise fall through to download
+        }
+      }
+
+      // Desktop fallback — always download
+      if (!shared) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
+
+      setShareState("done");
+      setTimeout(() => setShareState("idle"), 2500);
+    } catch (err) {
+      console.error("[ShareCard] Error:", err);
+      setShareError("Could not capture card. Try again.");
+      setShareState("idle");
+      setTimeout(() => setShareError(null), 3000);
+    }
+  }, [persona, shareState, isApex, isCapella]);
 
   return (
     <div className="relative flex flex-col items-center gap-3">
@@ -59,6 +134,7 @@ export default function MemberCard({
               FRONT FACE (Rendered to match the card images exactly)
              ════════════════════════════════════════════════════ */}
           <div
+            ref={cardFrontRef}
             className={`absolute inset-0 overflow-hidden rounded-[20px] ${isApex
                 ? "bg-[#090909] text-white border border-white/10"
                 : isCapella
@@ -195,6 +271,12 @@ export default function MemberCard({
             <div className="absolute bottom-6 left-6 z-10 flex flex-col">
               {isApex ? (
                 <>
+                  <p
+                    className="text-[18px] font-semibold leading-snug text-white/80"
+                    style={{ fontFamily: "Inter, -apple-system, sans-serif", maxWidth: "10rem" }}
+                  >
+                    {memberName.split(" ")[0]}<br />{memberName.split(" ").slice(1).join(" ")}
+                  </p>
                   <div className="my-2.5 h-[1.5px] w-6 bg-white/70" />
                   <h2
                     className="text-4xl leading-none tracking-wider text-white"
@@ -208,8 +290,13 @@ export default function MemberCard({
                 </>
               ) : isCapella ? (
                 <>
+                  <p
+                    className="text-[15px] font-medium leading-snug text-black/70"
+                    style={{ fontFamily: "Inter, -apple-system, sans-serif", maxWidth: "9rem" }}
+                  >
+                    {memberName.split(" ")[0]}<br />{memberName.split(" ").slice(1).join(" ")}
+                  </p>
                   <div className="mb-2.5 h-[1.5px] w-6 bg-black/70" />
-                 
                   <h2
                     className="mt-3 text-3xl leading-none tracking-[0.02em] text-[#111110]"
                     style={{
@@ -221,8 +308,13 @@ export default function MemberCard({
                 </>
               ) : (
                 <>
+                  <p
+                    className="text-[15px] font-medium leading-snug text-black/70"
+                    style={{ fontFamily: "Inter, -apple-system, sans-serif", maxWidth: "9rem" }}
+                  >
+                    {memberName.split(" ")[0]}<br />{memberName.split(" ").slice(1).join(" ")}
+                  </p>
                   <div className="mb-2.5 h-[1.5px] w-6 bg-black/70" />
-         
                   <h2
                     className="mt-2 text-4xl leading-none tracking-wider text-[#111110]"
                     style={{
@@ -476,16 +568,64 @@ export default function MemberCard({
         </motion.div>
       </div>
 
-      {/* Sub-card interactive flip button */}
-      <button
-        type="button"
-        onClick={() => setFlipped((f) => !f)}
-        className="flex items-center gap-1.5 font-mono text-[9.5px] uppercase tracking-[0.22em] text-ash hover:text-ink transition-colors"
-        style={{ fontFamily: MONO }}
+      {/* Sub-card actions row */}
+      <div className="flex items-center gap-4">
+        {/* Flip hint */}
+        <button
+          type="button"
+          onClick={() => setFlipped((f) => !f)}
+          className="flex items-center gap-1.5 font-mono text-[9.5px] uppercase tracking-[0.22em] transition-opacity hover:opacity-60"
+          style={{
+            fontFamily: MONO,
+            color: isApex ? "rgba(255,255,255,0.55)" : "rgba(0,0,0,0.45)",
+          }}
+        >
+          <RotateCcw className="h-3 w-3" />
+          {flipped ? "View front" : "Flip card"}
+        </button>
+
+        <span
+          className="h-3 w-px"
+          style={{ backgroundColor: isApex ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.15)" }}
+        />
+
+        {/* Share button */}
+        <button
+          type="button"
+          onClick={shareCard}
+          disabled={shareState === "loading"}
+          className="flex items-center gap-1.5 font-mono text-[9.5px] uppercase tracking-[0.22em] transition-opacity hover:opacity-70 disabled:opacity-40"
+          style={{
+            fontFamily: MONO,
+            color: shareState === "done"
+              ? (isApex ? "#d8ac52" : isCapella ? "#c8922a" : "#e8628a")
+              : isApex ? "rgba(255,255,255,0.75)" : "rgba(0,0,0,0.65)",
+          }}
+        >
+          {shareState === "done" ? (
+            <Check className="h-3 w-3" />
+          ) : shareState === "loading" ? (
+            <span className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" />
+          ) : (
+            <Share2 className="h-3 w-3" />
+          )}
+          {shareState === "done" ? "Saved!" : "Share card"}
+        </button>
+      </div>
+
+      {/* Share label */}
+      <p
+        className="font-mono text-[8px] uppercase tracking-[0.28em] -mt-1"
+        style={{
+          fontFamily: MONO,
+          color: isApex ? "rgba(255,255,255,0.28)" : "rgba(0,0,0,0.28)",
+        }}
       >
-        <RotateCcw className="h-3 w-3" />
-        {flipped ? "Click to view front artwork" : "Click card to flip & view privileges"}
-      </button>
+        {shareError
+          ? shareError
+          : "Share to Instagram · WhatsApp · X Status"}
+      </p>
     </div>
   );
 }
+

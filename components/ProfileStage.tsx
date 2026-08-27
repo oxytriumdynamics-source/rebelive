@@ -64,6 +64,7 @@ export default function ProfileStage({
 
   async function handleLogout() {
     await dispatch(logoutUser());
+    window.location.href = "/";
   }
 
   return (
@@ -81,39 +82,40 @@ export default function ProfileStage({
       <EverestPattern strokeColor={patternStroke} opacity={isApex ? 0.28 : 0.22} />
 
       {/* ── Top Nav ── */}
-      <nav className="relative z-20 flex w-full items-center justify-between px-6 py-4 sm:px-10 sm:py-5">
-        <NavLogo tone={isApex ? "dark" : "light"} width={180} />
+      <nav className="relative z-20 flex w-full items-center justify-between px-4 py-3 sm:px-10 sm:py-5">
+        <NavLogo tone={isApex ? "dark" : "light"} width={130} className="sm:!w-[180px]" />
 
-        <div className="flex items-center gap-3">
-          {/* Identity badge */}
+        <div className="flex items-center gap-2 sm:gap-3">
+          {/* Identity badge — full on sm+, dot-only on xs */}
           <div
-            className={`flex items-center gap-2 rounded-full px-3 py-1.5 border backdrop-blur-md ${borderColor}`}
+            className={`flex items-center gap-2 rounded-full px-2.5 py-1.5 border backdrop-blur-md ${borderColor}`}
             style={{ backgroundColor: isApex ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)" }}
           >
             <span
-              className="h-1.5 w-1.5 rounded-full"
+              className="h-1.5 w-1.5 shrink-0 rounded-full"
               style={{ backgroundColor: accentColor, boxShadow: `0 0 6px ${accentColor}` }}
             />
             <span
-              className={`font-mono text-[9.5px] uppercase tracking-[0.22em] font-semibold ${textSub}`}
+              className={`hidden sm:inline font-mono text-[9.5px] uppercase tracking-[0.22em] font-semibold ${textSub}`}
               style={{ fontFamily: MONO }}
             >
               {persona ? `${persona.name} · REBEL ID` : "REBEL ID"}
             </span>
           </div>
 
-          {/* Logout */}
+          {/* Logout — icon+text on sm+, icon-only on xs */}
           <button
             id="logout-btn"
             onClick={handleLogout}
-            className={`flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 font-mono text-[9.5px] uppercase tracking-[0.18em] transition-all hover:opacity-70 ${borderColor} ${textSub}`}
+            className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 sm:px-3.5 font-mono text-[9.5px] uppercase tracking-[0.18em] transition-all hover:opacity-70 ${borderColor} ${textSub}`}
             style={{ fontFamily: MONO }}
           >
-            <LogOut className="h-3 w-3" />
-            Sign out
+            <LogOut className="h-3 w-3 shrink-0" />
+            <span className="hidden sm:inline">Sign out</span>
           </button>
         </div>
       </nav>
+
 
       {/* ── Main content ── */}
       <div className="relative z-20 flex flex-1 flex-col items-center overflow-y-auto">
@@ -318,32 +320,129 @@ export default function ProfileStage({
                     ))}
                   </div>
 
-                  {/* Retake quiz link */}
-                  <button
-                    onClick={onStartQuiz}
-                    className={`mt-4 flex items-center gap-1.5 font-mono text-[8.5px] uppercase tracking-[0.18em] transition-opacity hover:opacity-60 ${textSub}`}
-                    style={{ fontFamily: MONO }}
-                  >
-                    <Sparkles className="h-3 w-3" />
-                    Retake the quiz
-                  </button>
+                 
                 </motion.div>
               )}
             </AnimatePresence>
+
+            {/* ── Social Links ── */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.4 }}
+              className={`rounded-xl border ${borderColor} p-4 ${panelBg}`}
+            >
+              <p
+                className="font-mono text-[8px] uppercase tracking-[0.28em] mb-3"
+                style={{ fontFamily: MONO, color: accentColor }}
+              >
+                Stay Connected
+              </p>
+              <div className="flex items-center gap-2">
+                {/* Instagram */}
+                <a
+                  href="https://www.instagram.com/rebelive.official"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`group flex items-center gap-2 flex-1 rounded-lg border px-3 py-2.5 transition-all hover:scale-[1.02] active:scale-[0.98] ${borderColor}`}
+                  style={{ backgroundColor: isApex ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)" }}
+                >
+                  <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: accentColor }}>
+                    <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
+                    <circle cx="12" cy="12" r="4"/>
+                    <circle cx="17.5" cy="6.5" r="0.5" fill="currentColor" stroke="none"/>
+                  </svg>
+                  <span className={`font-mono text-[8.5px] uppercase tracking-[0.15em] ${textSub}`} style={{ fontFamily: MONO }}>
+                    Instagram
+                  </span>
+                </a>
+
+                {/* LinkedIn */}
+                <a
+                  href="https://www.linkedin.com/company/rebelive/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`group flex items-center gap-2 flex-1 rounded-lg border px-3 py-2.5 transition-all hover:scale-[1.02] active:scale-[0.98] ${borderColor}`}
+                  style={{ backgroundColor: isApex ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)" }}
+                >
+                  <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="currentColor" style={{ color: accentColor }}>
+                    <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/>
+                    <rect x="2" y="9" width="4" height="12"/>
+                    <circle cx="4" cy="4" r="2"/>
+                  </svg>
+                  <span className={`font-mono text-[8.5px] uppercase tracking-[0.15em] ${textSub}`} style={{ fontFamily: MONO }}>
+                    LinkedIn
+                  </span>
+                </a>
+
+                {/* Facebook */}
+                <a
+                  href="https://facebook.com/rebelive.official"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`group flex items-center gap-2 flex-1 rounded-lg border px-3 py-2.5 transition-all hover:scale-[1.02] active:scale-[0.98] ${borderColor}`}
+                  style={{ backgroundColor: isApex ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)" }}
+                >
+                  <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="currentColor" style={{ color: accentColor }}>
+                    <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/>
+                  </svg>
+                  <span className={`font-mono text-[8.5px] uppercase tracking-[0.15em] ${textSub}`} style={{ fontFamily: MONO }}>
+                    Facebook
+                  </span>
+                </a>
+              </div>
+            </motion.div>
           </motion.div>
         </div>
       </div>
 
       {/* ── Footer ── */}
       <div
-        className={`relative z-20 flex w-full items-center justify-between px-6 py-2.5 sm:px-10 border-t ${borderColor} ${textSub}`}
+        className={`relative z-20 flex w-full items-center justify-between gap-4 px-4 py-2.5 sm:px-10 border-t ${borderColor} ${textSub}`}
       >
-        <span className="font-mono text-[9px] uppercase tracking-[0.3em]" style={{ fontFamily: MONO }}>
-          REBELIVE
+        {/* Left — copyright */}
+        <span
+          className="font-mono text-[10px] uppercase tracking-[0.18em] shrink-0 hidden sm:block"
+          style={{ fontFamily: MONO }}
+        >
+          © Oxytrium Dynamics Private Limited
         </span>
-        <span className="font-mono text-[9px] uppercase tracking-[0.3em]" style={{ fontFamily: MONO }}>
+        {/* Mobile short version */}
+        <span
+          className="font-mono text-[10px] uppercase tracking-[0.18em] shrink-0 sm:hidden"
+          style={{ fontFamily: MONO }}
+        >
+          © Oxytrium Dynamics
+        </span>
+
+        {/* Centre — tagline */}
+        <span
+          className="font-mono text-[9px] uppercase tracking-[0.3em] shrink-0 mx-auto"
+          style={{ fontFamily: MONO }}
+        >
           WAKE · FUEL · REBEL
         </span>
+
+        {/* Right — legal links */}
+        <div className="flex items-center gap-3 shrink-0">
+          <a
+            href="/privacy"
+            className="font-mono text-[10px] uppercase tracking-[0.18em] transition-opacity hover:opacity-100 opacity-80"
+            style={{ fontFamily: MONO }}
+          >
+            <span className="hidden sm:inline">Privacy Policy</span>
+            <span className="sm:hidden">Privacy</span>
+          </a>
+          <span className="opacity-30">·</span>
+          <a
+            href="/terms"
+            className="font-mono text-[10px] uppercase tracking-[0.18em] transition-opacity hover:opacity-100 opacity-80"
+            style={{ fontFamily: MONO }}
+          >
+            <span className="hidden sm:inline">Terms of Service</span>
+            <span className="sm:hidden">Terms</span>
+          </a>
+        </div>
       </div>
     </motion.div>
   );
