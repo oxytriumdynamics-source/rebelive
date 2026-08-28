@@ -79,7 +79,7 @@ export default function Home() {
   }
 
   return (
-    <div className="fixed inset-0 h-[100dvh] w-[100dvw] overflow-hidden bg-ink">
+    <div className="fixed inset-0 h-[100dvh] w-[100dvw] overflow-hidden bg-ink overscroll-none">
       <AnimatePresence mode="wait">
         {stage === "profile" && isAuthenticated && user && (
           <ProfileStage

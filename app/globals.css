@@ -72,10 +72,7 @@ body {
   background: var(--ink);
   color: var(--paper);
   font-family: var(--font-body), -apple-system, "Segoe UI", sans-serif;
-  overflow: hidden;
-  position: fixed;
-  inset: 0;
-  width: 100%;
+  /* overflow and position are set per-page; the main app uses fixed inset-0 stages */
 }
 
 ::selection {

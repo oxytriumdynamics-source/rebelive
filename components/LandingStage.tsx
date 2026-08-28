@@ -57,8 +57,8 @@ export default function LandingStage({
         )}
       </nav>
 
-      {/* ── Main content ── */}
-      <div className="relative z-10 flex flex-1 flex-col px-6 pb-4 sm:px-10">
+        {/* ── Main content ── */}
+      <div className="relative z-10 flex flex-1 flex-col px-6 pb-3 sm:px-10">
         {/* Giant headline */}
         <div className="flex flex-1 flex-col justify-center gap-0">
           {/* FIND — filled */}
@@ -67,7 +67,7 @@ export default function LandingStage({
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.65, delay: 0.18, ease: [0.16, 1, 0.3, 1] }}
             className="font-display leading-[0.88] text-ink select-none"
-            style={{ fontFamily: DISPLAY, fontSize: "clamp(5rem, 15vw, 12rem)", letterSpacing: "-0.01em" }}
+            style={{ fontFamily: DISPLAY, fontSize: "clamp(3.8rem, 13vw, 12rem)", letterSpacing: "-0.01em" }}
           >
             FIND
           </motion.h1>
@@ -80,7 +80,7 @@ export default function LandingStage({
             className="font-display leading-[0.88] select-none"
             style={{
               fontFamily: DISPLAY,
-              fontSize: "clamp(5rem, 15vw, 12rem)",
+              fontSize: "clamp(3.8rem, 13vw, 12rem)",
               letterSpacing: "-0.01em",
               color: "transparent",
               WebkitTextStroke: "2.5px #0a0a0a",
@@ -89,15 +89,15 @@ export default function LandingStage({
             YOUR
           </motion.h1>
 
-          {/* CHARACTER. — filled */}
+          {/* PERSONA. — filled */}
           <motion.h1
             initial={{ opacity: 0, x: -24 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.65, delay: 0.42, ease: [0.16, 1, 0.3, 1] }}
             className="font-display leading-[0.88] text-ink select-none"
-            style={{ fontFamily: DISPLAY, fontSize: "clamp(5rem, 15vw, 12rem)", letterSpacing: "-0.01em" }}
+            style={{ fontFamily: DISPLAY, fontSize: "clamp(3.8rem, 13vw, 12rem)", letterSpacing: "-0.01em" }}
           >
-            CHARACTER.
+            PERSONA.
           </motion.h1>
 
           {/* Sub-text + CTA */}
@@ -105,12 +105,10 @@ export default function LandingStage({
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.58 }}
-            className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
+            className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
           >
             <p className="font-mono text-[12px] leading-relaxed text-ash" style={{ fontFamily: MONO }}>
-              Five questions. Thirty possible paths.
-              <br />
-              One version of you, revealed.
+            .
             </p>
 
             <button

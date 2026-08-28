@@ -167,7 +167,7 @@ export default function AuthPageShell() {
   const { loading, error, otpSent, otpVerifying, otpError, user, isAuthenticated } =
     useAppSelector((s) => s.auth);
 
-  const [mode, setMode] = useState<Mode>("signup");
+  const [mode, setMode] = useState<Mode>("login");
   const [stage, setStage] = useState<Stage>("form");
 
   // Form fields
@@ -227,7 +227,7 @@ export default function AuthPageShell() {
           lastName: lastName.trim(),
           email: email.trim(),
           password,
-          phone: phone.trim() || undefined,
+          phone: phone.trim(),
         })
       );
     } else {
@@ -265,7 +265,7 @@ export default function AuthPageShell() {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.6, delay: 0.12 }}
-      className="relative hidden min-h-screen flex-col justify-between p-8 md:flex md:w-2/5 lg:w-1/3 lg:p-10 xl:p-12 overflow-hidden bg-[#0a0a0a]"
+      className="relative hidden h-full flex-col justify-between p-8 md:flex md:w-2/5 lg:w-1/3 lg:p-10 xl:p-12 overflow-hidden bg-[#0a0a0a]"
     >
       <div
         className="pointer-events-none absolute inset-0"
@@ -440,7 +440,7 @@ export default function AuthPageShell() {
   const FormStage = (
     <div className="w-full max-w-[420px]">
       {/* Heading */}
-      <div className="mb-5 sm:mb-6 text-left">
+      <div className="mb-3 text-left">
         <AnimatePresence mode="wait">
           <motion.h1
             key={mode}
@@ -448,18 +448,18 @@ export default function AuthPageShell() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -6 }}
             transition={{ duration: 0.2 }}
-            className="font-display leading-none text-ink text-3xl sm:text-4xl"
+            className="font-display leading-none text-ink text-2xl sm:text-3xl"
             style={{ fontFamily: DISPLAY }}
           >
             {mode === "signup" ? "Create Account" : "Sign In"}
           </motion.h1>
         </AnimatePresence>
-        <p className="font-mono mt-2 text-[9px] uppercase tracking-[0.22em] text-ash" style={{ fontFamily: MONO }}>
+        <p className="font-mono mt-1 text-[8.5px] uppercase tracking-[0.22em] text-ash" style={{ fontFamily: MONO }}>
           {mode === "signup" ? "Join the rebel pack." : "Welcome back, rebel."}
         </p>
       </div>
 
-      <form onSubmit={handleFormSubmit} className="flex flex-col gap-3.5">
+      <form onSubmit={handleFormSubmit} className="flex flex-col gap-2">
         <AnimatePresence>
           {mode === "signup" && (
             <>
@@ -470,126 +470,102 @@ export default function AuthPageShell() {
                 animate={{ opacity: 1, height: "auto" }}
                 exit={{ opacity: 0, height: 0 }}
                 transition={{ duration: 0.2 }}
-                className="flex gap-2.5 overflow-hidden"
+                className="flex gap-2 overflow-hidden"
               >
-                <label className="flex flex-1 flex-col gap-1">
-                  <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-ash" style={{ fontFamily: MONO }}>
-                    First Name
-                  </span>
-                  <div className="relative">
-                    <User className="absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ash" />
-                    <input
-                      id="first-name"
-                      value={firstName}
-                      onChange={(e) => setFirstName(e.target.value)}
-                      placeholder="First"
-                      className="w-full border border-black/15 bg-white/60 py-2.5 sm:py-3 pl-9 pr-3 text-[12.5px] text-ink placeholder:text-ash/50 outline-none transition-all focus:border-ink focus:bg-white"
-                      style={{ fontFamily: SANS }}
-                      required
-                    />
-                  </div>
-                </label>
-                <label className="flex flex-1 flex-col gap-1">
-                  <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-ash" style={{ fontFamily: MONO }}>
-                    Last Name
-                  </span>
-                  <div className="relative">
-                    <input
-                      id="last-name"
-                      value={lastName}
-                      onChange={(e) => setLastName(e.target.value)}
-                      placeholder="Last"
-                      className="w-full border border-black/15 bg-white/60 py-2.5 sm:py-3 px-3 text-[12.5px] text-ink placeholder:text-ash/50 outline-none transition-all focus:border-ink focus:bg-white"
-                      style={{ fontFamily: SANS }}
-                      required
-                    />
-                  </div>
-                </label>
+                <div className="relative flex-1">
+                  <User className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ash" />
+                  <input
+                    id="first-name"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    placeholder="First name"
+                    aria-label="First name"
+                    className="w-full border border-black/15 bg-white/60 py-2 sm:py-2.5 pl-9 pr-3 text-[12px] text-ink placeholder:text-ash/50 outline-none transition-all focus:border-ink focus:bg-white"
+                    style={{ fontFamily: SANS }}
+                    required
+                  />
+                </div>
+                <div className="relative flex-1">
+                  <input
+                    id="last-name"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    placeholder="Last name"
+                    aria-label="Last name"
+                    className="w-full border border-black/15 bg-white/60 py-2 sm:py-2.5 px-3 text-[12px] text-ink placeholder:text-ash/50 outline-none transition-all focus:border-ink focus:bg-white"
+                    style={{ fontFamily: SANS }}
+                    required
+                  />
+                </div>
               </motion.div>
 
-              {/* Phone (optional) */}
-              <motion.label
+              {/* Phone */}
+              <motion.div
                 key="phone"
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: "auto" }}
                 exit={{ opacity: 0, height: 0 }}
                 transition={{ duration: 0.2, delay: 0.04 }}
-                className="flex flex-col gap-1 overflow-hidden"
+                className="relative overflow-hidden"
               >
-                <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-ash" style={{ fontFamily: MONO }}>
-                  Phone{" "}
-                  <span className="normal-case tracking-normal opacity-50">(optional)</span>
-                </span>
-                <div className="relative">
-                  <Phone className="absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ash" />
-                  <input
-                    id="phone"
-                    type="tel"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="+91 9876543210"
-                    className="w-full border border-black/15 bg-white/60 py-2.5 sm:py-3 pl-9 pr-4 text-[12.5px] text-ink placeholder:text-ash/50 outline-none transition-all focus:border-ink focus:bg-white"
-                    style={{ fontFamily: SANS }}
-                  />
-                </div>
-              </motion.label>
+                <Phone className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ash" />
+                <input
+                  id="phone"
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="Phone number"
+                  aria-label="Phone number"
+                  className="w-full border border-black/15 bg-white/60 py-2 sm:py-2.5 pl-9 pr-4 text-[12px] text-ink placeholder:text-ash/50 outline-none transition-all focus:border-ink focus:bg-white"
+                  style={{ fontFamily: SANS }}
+                  required
+                  minLength={10}
+                />
+              </motion.div>
             </>
           )}
         </AnimatePresence>
 
         {/* Email */}
-        <label className="flex flex-col gap-1">
-          <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-ash" style={{ fontFamily: MONO }}>
-            Email Address
-          </span>
-          <div className="relative">
-            <Mail className="absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ash" />
-            <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@domain.com"
-              className="w-full border border-black/15 bg-white/60 py-2.5 sm:py-3 pl-9 pr-4 text-[12.5px] text-ink placeholder:text-ash/50 outline-none transition-all focus:border-ink focus:bg-white"
-              style={{ fontFamily: SANS }}
-              required
-            />
-          </div>
-        </label>
+        <div className="relative">
+          <Mail className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ash" />
+          <input
+            id="email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Email address"
+            aria-label="Email address"
+            className="w-full border border-black/15 bg-white/60 py-2 sm:py-2.5 pl-9 pr-4 text-[12px] text-ink placeholder:text-ash/50 outline-none transition-all focus:border-ink focus:bg-white"
+            style={{ fontFamily: SANS }}
+            required
+          />
+        </div>
 
         {/* Password */}
-        <label className="flex flex-col gap-1">
-          <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-ash" style={{ fontFamily: MONO }}>
-            Password
-          </span>
-          <div className="relative">
-            <Lock className="absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ash" />
-            <input
-              id="password"
-              type={showPassword ? "text" : "password"}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              className="w-full border border-black/15 bg-white/60 py-2.5 sm:py-3 pl-9 pr-10 text-[12.5px] text-ink placeholder:text-ash/50 outline-none transition-all focus:border-ink focus:bg-white"
-              style={{ fontFamily: SANS }}
-              required
-              minLength={8}
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-ash hover:text-ink transition-colors"
-              aria-label="Toggle password visibility"
-            >
-              {showPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-            </button>
-          </div>
-          {mode === "signup" && (
-            <p className="text-[9px] text-ash/60 mt-0.5" style={{ fontFamily: MONO }}>
-              Min 8 chars · one uppercase · one number
-            </p>
-          )}
-        </label>
+        <div className="relative">
+          <Lock className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ash" />
+          <input
+            id="password"
+            type={showPassword ? "text" : "password"}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Password (min 8 chars)"
+            aria-label="Password"
+            className="w-full border border-black/15 bg-white/60 py-2 sm:py-2.5 pl-9 pr-10 text-[12px] text-ink placeholder:text-ash/50 outline-none transition-all focus:border-ink focus:bg-white"
+            style={{ fontFamily: SANS }}
+            required
+            minLength={8}
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-ash hover:text-ink transition-colors"
+            aria-label="Toggle password visibility"
+          >
+            {showPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+          </button>
+        </div>
 
         {/* Remember / Forgot */}
         {mode === "login" && (
@@ -632,7 +608,7 @@ export default function AuthPageShell() {
           type="submit"
           id="auth-submit-btn"
           disabled={loading}
-          className="group mt-1 flex items-center justify-center gap-2 bg-ink py-3 sm:py-3.5 font-mono text-[10.5px] uppercase tracking-[0.2em] text-paper transition-all duration-200 hover:bg-ink/85 active:scale-[0.98] disabled:opacity-60 shadow-md"
+          className="group mt-0.5 flex items-center justify-center gap-2 bg-ink py-2.5 font-mono text-[10.5px] uppercase tracking-[0.2em] text-paper transition-all duration-200 hover:bg-ink/85 active:scale-[0.98] disabled:opacity-60 shadow-md"
           style={{ fontFamily: MONO }}
         >
           {loading
@@ -645,7 +621,7 @@ export default function AuthPageShell() {
       </form>
 
       {/* Mode toggle */}
-      <div className="mt-4 text-center">
+      <div className="mt-2.5 text-center">
         <span className="font-mono text-[10px] text-ash" style={{ fontFamily: MONO }}>
           {mode === "signup" ? "Already have an account? " : "Don't have an account? "}
         </span>
@@ -659,7 +635,7 @@ export default function AuthPageShell() {
       </div>
 
       {/* Divider */}
-      <div className="relative flex items-center gap-3 mt-4">
+      <div className="relative flex items-center gap-3 mt-2">
         <div className="h-px flex-1 bg-black/10" />
         <span className="font-mono text-[8px] uppercase tracking-[0.2em] text-ash" style={{ fontFamily: MONO }}>
           or
@@ -668,12 +644,12 @@ export default function AuthPageShell() {
       </div>
 
       {/* Google OAuth */}
-      <div className="mt-3">
+      <div className="mt-2">
         <button
           type="button"
           id="google-login-btn"
           onClick={googleLogin}
-          className="flex w-full items-center justify-center gap-2.5 border border-black/15 bg-white/70 py-2.5 sm:py-3 px-4 font-mono text-[10px] uppercase tracking-[0.16em] text-ink transition-all hover:bg-white hover:border-black/30 shadow-xs"
+          className="flex w-full items-center justify-center gap-2.5 border border-black/15 bg-white/70 py-2 px-4 font-mono text-[10px] uppercase tracking-[0.16em] text-ink transition-all hover:bg-white hover:border-black/30 shadow-xs"
           style={{ fontFamily: MONO }}
         >
           <svg className="h-4 w-4" viewBox="0 0 24 24">
@@ -690,21 +666,21 @@ export default function AuthPageShell() {
 
   // ── Shell ─────────────────────────────────────────────────
   return (
-    <div className="relative min-h-screen w-full flex flex-col md:flex-row overflow-x-hidden bg-[#f0efeb]">
+    <div className="relative h-[100dvh] w-full flex flex-col md:flex-row overflow-hidden bg-[#f0efeb]">
 
       {/* LEFT — Form pane */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.4 }}
-        className="relative flex min-h-screen w-full flex-1 flex-col justify-between overflow-y-auto p-5 sm:p-8 md:w-3/5 md:p-10 lg:w-2/3 lg:p-12 xl:p-16"
+        className="relative flex h-full w-full flex-1 flex-col justify-between overflow-hidden p-4 sm:p-6 md:w-3/5 md:p-8 lg:w-2/3 lg:p-10 xl:p-12"
         style={{ backgroundColor: "#f0efeb" }}
       >
         <HalftoneField />
         <EverestPattern opacity={0.18} />
 
         {/* Top bar */}
-        <div className="relative z-10 flex items-center justify-between gap-4 pb-4">
+        <div className="relative z-10 flex items-center justify-between gap-4 pb-2">
           <Link
             href="/"
             className="group flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.2em] text-ash transition-colors hover:text-ink"
@@ -717,7 +693,7 @@ export default function AuthPageShell() {
         </div>
 
         {/* Centre */}
-        <div className="relative z-10 flex w-full flex-1 items-center justify-center py-6 sm:py-8">
+        <div className="relative z-10 flex w-full flex-1 min-h-0 items-center justify-center py-2">
           <AnimatePresence mode="wait">
             {stage === "form" && (
               <motion.div
@@ -747,7 +723,7 @@ export default function AuthPageShell() {
         </div>
 
         {/* Footer */}
-        <div className="relative z-10 flex items-center justify-between pt-4 border-t border-black/5">
+        <div className="relative z-10 flex items-center justify-between pt-2 border-t border-black/5">
           <span className="font-mono text-[9px] uppercase tracking-[0.25em] text-ash/60" style={{ fontFamily: MONO }}>
             Wake · Fuel · Rebel
           </span>

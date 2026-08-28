@@ -19,9 +19,11 @@ function getIssuedDate(): string {
 export default function MemberCard({
   persona,
   memberName = "John Oribase",
+  showActions = true,
 }: {
   persona: PersonaProfile;
   memberName?: string;
+  showActions?: boolean;
 }) {
   const [flipped, setFlipped] = useState(false);
   const [shareState, setShareState] = useState<"idle" | "loading" | "done">("idle");
@@ -122,8 +124,8 @@ export default function MemberCard({
       <div
         className="relative mx-auto cursor-pointer select-none group"
         style={{
-          width: "min(340px, 86vw)",
-          height: "min(530px, 66vh)",
+          width: "min(340px, 100%)",
+          height: "min(530px, calc(100dvh - 220px))",
           aspectRatio: "1 / 1.56",
           perspective: "1400px",
           WebkitPerspective: "1400px",
@@ -148,7 +150,7 @@ export default function MemberCard({
             className={`absolute inset-0 overflow-hidden rounded-[20px] ${isApex
                 ? "bg-[#090909] text-white border border-white/10"
                 : isCapella
-                  ? "bg-[#f5f5f3] text-[#111110] border border-black/10"
+                  ? "bg-[#fcfcfc] text-[#111110] border border-black/10"
                   : "bg-[#fcfcfc] text-[#111110] border border-black/10"
               }`}
             style={{
@@ -358,7 +360,7 @@ export default function MemberCard({
             className={`absolute inset-0 flex flex-col justify-between overflow-hidden p-6 rounded-[20px] select-none transition-all duration-300 ${isApex
                 ? "bg-[#090909] text-white border border-white/15"
                 : isCapella
-                  ? "bg-[#f5f5f3] text-[#111110] border border-black/12"
+                  ? "bg-[#fcfcfc] text-[#111110] border border-black/12"
                   : "bg-[#fcfcfc] text-[#111110] border border-black/12"
               }`}
             style={{
@@ -587,63 +589,67 @@ export default function MemberCard({
         </motion.div>
       </div>
 
-      {/* Sub-card actions row */}
-      <div className="flex items-center gap-4">
-        {/* Flip hint */}
-        <button
-          type="button"
-          onClick={() => setFlipped((f) => !f)}
-          className="flex items-center gap-1.5 font-mono text-[9.5px] uppercase tracking-[0.22em] transition-opacity hover:opacity-60"
-          style={{
-            fontFamily: MONO,
-            color: isApex ? "rgba(255,255,255,0.55)" : "rgba(0,0,0,0.45)",
-          }}
-        >
-          <RotateCcw className="h-3 w-3" />
-          {flipped ? "View front" : "Flip card"}
-        </button>
+      {/* Sub-card actions row — only shown on profile, not result */}
+      {showActions && (
+        <>
+          <div className="flex items-center gap-4">
+            {/* Flip hint */}
+            <button
+              type="button"
+              onClick={() => setFlipped((f) => !f)}
+              className="flex items-center gap-1.5 font-mono text-[9.5px] uppercase tracking-[0.22em] transition-opacity hover:opacity-60"
+              style={{
+                fontFamily: MONO,
+                color: isApex ? "rgba(255,255,255,0.55)" : "rgba(0,0,0,0.45)",
+              }}
+            >
+              <RotateCcw className="h-3 w-3" />
+              {flipped ? "View front" : "Flip card"}
+            </button>
 
-        <span
-          className="h-3 w-px"
-          style={{ backgroundColor: isApex ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.15)" }}
-        />
+            <span
+              className="h-3 w-px"
+              style={{ backgroundColor: isApex ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.15)" }}
+            />
 
-        {/* Share button */}
-        <button
-          type="button"
-          onClick={shareCard}
-          disabled={shareState === "loading"}
-          className="flex items-center gap-1.5 font-mono text-[9.5px] uppercase tracking-[0.22em] transition-opacity hover:opacity-70 disabled:opacity-40"
-          style={{
-            fontFamily: MONO,
-            color: shareState === "done"
-              ? (isApex ? "#d8ac52" : isCapella ? "#c8922a" : "#e8628a")
-              : isApex ? "rgba(255,255,255,0.75)" : "rgba(0,0,0,0.65)",
-          }}
-        >
-          {shareState === "done" ? (
-            <Check className="h-3 w-3" />
-          ) : shareState === "loading" ? (
-            <span className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" />
-          ) : (
-            <Share2 className="h-3 w-3" />
-          )}
-          {shareState === "done" ? "Saved!" : "Share card"}
-        </button>
-      </div>
+            {/* Share button */}
+            <button
+              type="button"
+              onClick={shareCard}
+              disabled={shareState === "loading"}
+              className="flex items-center gap-1.5 font-mono text-[9.5px] uppercase tracking-[0.22em] transition-opacity hover:opacity-70 disabled:opacity-40"
+              style={{
+                fontFamily: MONO,
+                color: shareState === "done"
+                  ? (isApex ? "#d8ac52" : isCapella ? "#c8922a" : "#e8628a")
+                  : isApex ? "rgba(255,255,255,0.75)" : "rgba(0,0,0,0.65)",
+              }}
+            >
+              {shareState === "done" ? (
+                <Check className="h-3 w-3" />
+              ) : shareState === "loading" ? (
+                <span className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" />
+              ) : (
+                <Share2 className="h-3 w-3" />
+              )}
+              {shareState === "done" ? "Saved!" : "Share card"}
+            </button>
+          </div>
 
-      {/* Share label */}
-      <p
-        className="font-mono text-[8px] uppercase tracking-[0.28em] -mt-1"
-        style={{
-          fontFamily: MONO,
-          color: isApex ? "rgba(255,255,255,0.28)" : "rgba(0,0,0,0.28)",
-        }}
-      >
-        {shareError
-          ? shareError
-          : "Share to Instagram · WhatsApp · X Status"}
-      </p>
+          {/* Share label */}
+          <p
+            className="font-mono text-[8px] uppercase tracking-[0.28em] -mt-1"
+            style={{
+              fontFamily: MONO,
+              color: isApex ? "rgba(255,255,255,0.28)" : "rgba(0,0,0,0.28)",
+            }}
+          >
+            {shareError
+              ? shareError
+              : "Share to Instagram · WhatsApp · X Status"}
+          </p>
+        </>
+      )}
     </div>
   );
 }

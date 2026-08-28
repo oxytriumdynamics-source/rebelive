@@ -33,7 +33,7 @@ export default function ResultStage({
   const isAviva = persona.id === "AVIVA";
 
   // The member name: use logged-in user's name or a placeholder
-  const memberName = user ? `${user.firstName} ${user.lastName}` : "John Oribase";
+  const memberName = user ? `${user.firstName} ${user.lastName}` : "";
 
   async function handleClaim() {
     if (isAuthenticated) {
@@ -90,7 +90,7 @@ export default function ResultStage({
       />
 
       {/* ── Top Nav ── */}
-      <nav className="relative z-20 flex w-full items-center justify-between px-6 py-4 sm:px-10 sm:py-5">
+      <nav className="relative z-20 flex w-full items-center justify-between px-4 py-3 sm:px-10 sm:py-4">
         <NavLogo tone={isApex ? "dark" : "light"} width={180} />
 
         <div
@@ -127,31 +127,16 @@ export default function ResultStage({
       </nav>
 
       {/* ── Center Stage: Member Card + Actions ── */}
-      <div className="relative z-20 flex flex-1 flex-col items-center justify-center gap-4 px-4 py-2 overflow-y-auto">
+      <div className="relative z-20 flex flex-1 min-h-0 flex-col items-center justify-center gap-2 px-4 py-1 overflow-y-auto">
         <motion.div
           initial={{ opacity: 0, y: 20, scale: 0.96 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ duration: 0.6, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
-          className="w-full flex flex-col items-center gap-3.5"
+          className="w-full flex flex-col items-center gap-2"
         >
-          {/* Header intro */}
-          <div className="text-center">
-            <span
-              className={`font-mono text-[9.5px] uppercase tracking-[0.32em] font-medium ${
-                isApex
-                  ? "text-white/60"
-                  : isCapella
-                  ? "text-[#111110]/50"
-                  : "text-[#111110]/50"
-              }`}
-              style={{ fontFamily: MONO }}
-            >
-              YOUR REBEL IDENTITY
-            </span>
-          </div>
 
           {/* Member Card with Flip functionality */}
-          <MemberCard persona={persona} memberName={memberName} />
+          <MemberCard persona={persona} memberName={memberName} showActions={false} />
 
           {/* CTA row */}
           <div className="flex flex-wrap items-center justify-center gap-4 pt-1">
