@@ -9,7 +9,10 @@ export const registerSchema = z.object({
     .regex(/[0-9]/, 'Password must contain at least one number'),
   firstName: z.string().min(1, 'First name is required').max(50),
   lastName: z.string().min(1, 'Last name is required').max(50),
-  phone: z.string().optional(),
+  phone: z
+    .string()
+    .min(10, 'Phone number must be at least 10 digits')
+    .regex(/^[+]?[(]?[0-9]{1,4}[)]?[-\s./0-9]{7,15}$/, 'Invalid phone number format'),
 });
 
 export const loginSchema = z.object({

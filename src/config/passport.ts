@@ -8,6 +8,8 @@ import { Request } from 'express';
 import { prisma } from './database';
 import { env } from './env';
 import { logger } from '../shared/utils/logger';
+import { sendMail } from '../lib/mailer';
+import { greetingEmailHtml } from '../lib/emailTemplates';
 
 // ─── JWT Strategy ──────────────────────────────────────
 // Extracts JWT from Authorization header OR HttpOnly cookie
@@ -90,6 +92,13 @@ passport.use(
             },
           });
           logger.info(`[Auth] New Google user created: ${email}`);
+
+          // First-time Google signup — send welcome mail (non-blocking)
+          sendMail({
+            to: user.email,
+            subject: 'Welcome to REBELIVE — Your Rebel ID is live 🔥',
+            html: greetingEmailHtml({ firstName: user.firstName }),
+          });
         } else if (!user.googleId) {
           // Existing local user — link Google account
           user = await prisma.user.update({

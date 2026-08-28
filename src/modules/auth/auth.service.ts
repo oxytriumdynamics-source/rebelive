@@ -91,12 +91,7 @@ export async function registerUser(
 
   logger.info(`[Auth] User registered: ${user.email}`);
 
-  // Send greeting email (non-blocking)
-  sendMail({
-    to: user.email,
-    subject: 'Welcome to REBELIVE — Your Rebel ID is live 🔥',
-    html: greetingEmailHtml({ firstName: user.firstName }),
-  });
+  // Welcome email is deferred — sent only after email is verified (see verifyOtp)
 
   // Send OTP immediately after registration
   await sendOtp({ email: user.email });
@@ -249,6 +244,13 @@ export async function verifyOtp(
   });
 
   logger.info(`[Auth] Email verified: ${user.email}`);
+
+  // Now that email is confirmed, send the welcome mail (non-blocking)
+  sendMail({
+    to: verified.email,
+    subject: 'Welcome to REBELIVE — Your Rebel ID is live 🔥',
+    html: greetingEmailHtml({ firstName: verified.firstName }),
+  });
 
   const tokens = await generateAndStoreTokens(verified);
   return { user: sanitizeUser(verified), tokens };
