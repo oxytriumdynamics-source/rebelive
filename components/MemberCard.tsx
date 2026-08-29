@@ -274,7 +274,7 @@ export default function MemberCard({
 
             {isApex && (
               <div
-                className="absolute right-4 top-28 z-10 font-mono text-[9px] tracking-[0.25em] text-white/75"
+                className="absolute left-4  top-28 z-10 font-mono text-[9px] tracking-[0.25em] text-white/75"
                 style={{
                   fontFamily: MONO,
                   writingMode: "vertical-rl",

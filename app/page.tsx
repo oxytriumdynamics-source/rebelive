@@ -31,7 +31,7 @@ export default function Home() {
         dispatch(getMe());
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Switch to profile if user is authenticated
