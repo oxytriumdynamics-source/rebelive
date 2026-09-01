@@ -148,10 +148,10 @@ export default function MemberCard({
           <div
             ref={cardFrontRef}
             className={`absolute inset-0 overflow-hidden rounded-[20px] ${isApex
-                ? "bg-[#090909] text-white border border-white/10"
-                : isCapella
-                  ? "bg-[#fcfcfc] text-[#111110] border border-black/10"
-                  : "bg-[#fcfcfc] text-[#111110] border border-black/10"
+              ? "bg-[#090909] text-white border border-white/10"
+              : isCapella
+                ? "bg-[#fcfcfc] text-[#111110] border border-black/10"
+                : "bg-[#fcfcfc] text-[#111110] border border-black/10"
               }`}
             style={{
               backfaceVisibility: "hidden",
@@ -170,41 +170,41 @@ export default function MemberCard({
             <div className="absolute inset-0 pointer-events-none">
               {isApex && (
                 <div className="relative h-full w-full opacity-90">
-                    <Image
-                      src="/brand/APEX.png"
-                      alt="APEX Topography"
-                      fill
-                      priority
+                  <Image
+                    src="/brand/APEX.png"
+                    alt="APEX Topography"
+                    fill
+                    priority
                     sizes="340px"
                     className="object-cover object-[20%_45%]"
-                    />
+                  />
                   <div className="absolute inset-0 bg-gradient-to-t from-[#090909]/90 via-transparent to-transparent" />
                 </div>
               )}
 
               {isCapella && (
                 <div className="relative h-full w-full opacity-95">
-                    <Image
-                      src="/brand/Capella.png"
-                      alt="Capella Constellation"
-                      fill
-                      priority
+                  <Image
+                    src="/brand/Capella.png"
+                    alt="Capella Constellation"
+                    fill
+                    priority
                     sizes="340px"
                     className="object-cover object-[22%_18%]"
-                    />
+                  />
                 </div>
               )}
 
               {isAviva && (
                 <div className="relative h-full w-full">
-                    <Image
-                      src="/brand/Aviva.png"
+                  <Image
+                    src="/brand/Aviva.png"
                     alt="Aviva Sakura & Fuji"
-                      fill
-                      priority
-                        sizes="340px"
+                    fill
+                    priority
+                    sizes="340px"
                     className="object-cover object-[52%_bottom]"
-                      />
+                  />
                   {/* Subtle fade on left bottom to ensure text clarity */}
                   <div className="absolute inset-0 bg-gradient-to-tr from-white/70 via-transparent to-transparent" />
                 </div>
@@ -228,11 +228,10 @@ export default function MemberCard({
 
               {/* Panther Insignia Badge (Uniform as CAPELLA) */}
               <div
-                className={`flex h-10 w-10 items-center justify-center rounded-full  p-1 shadow-sm ${
-                  isApex
+                className={`flex h-10 w-10 items-center justify-center rounded-full  p-1 shadow-sm ${isApex
                     ? "border-white/50 bg-black/60 backdrop-blur-xs"
                     : "border-black bg-white"
-                }`}
+                  }`}
               >
                 <div className="relative h-full w-full">
                   <Image
@@ -358,10 +357,10 @@ export default function MemberCard({
              ════════════════════════════════════════════════════ */}
           <div
             className={`absolute inset-0 flex flex-col justify-between overflow-hidden p-6 rounded-[20px] select-none transition-all duration-300 ${isApex
-                ? "bg-[#090909] text-white border border-white/15"
-                : isCapella
-                  ? "bg-[#fcfcfc] text-[#111110] border border-black/12"
-                  : "bg-[#fcfcfc] text-[#111110] border border-black/12"
+              ? "bg-[#090909] text-white border border-white/15"
+              : isCapella
+                ? "bg-[#fcfcfc] text-[#111110] border border-black/12"
+                : "bg-[#fcfcfc] text-[#111110] border border-black/12"
               }`}
             style={{
               backfaceVisibility: "hidden",

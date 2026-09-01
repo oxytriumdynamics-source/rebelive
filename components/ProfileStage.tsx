@@ -13,8 +13,8 @@ import { useAppDispatch } from "@/store/hooks";
 import { logoutUser } from "@/store/slices/authslice";
 
 const MONO = "JetBrains Mono, Courier New, monospace";
-const DISPLAY = "Anton, Arial Narrow, sans-serif";
-const SANS = "Inter, -apple-system, sans-serif";
+const DISPLAY = "'Code Next', Anton, 'Arial Narrow', sans-serif";
+const SANS = "'Poppins', -apple-system, sans-serif";
 
 // Map backend slug → PERSONAS key
 const SLUG_TO_PERSONA: Record<string, keyof typeof PERSONAS> = {
@@ -199,20 +199,20 @@ export default function ProfileStage({
                 Welcome back
               </p>
               <h1
-                className={`mt-1 font-display leading-tight ${textPrimary}`}
-                style={{ fontFamily: DISPLAY, fontSize: "clamp(1.8rem, 5vw, 2.8rem)" }}
+                className={`mt-1 font-display leading-tight tracking-tight ${textPrimary}`}
+                style={{ fontFamily: DISPLAY, fontSize: "clamp(2rem, 5vw, 3rem)", fontWeight: 700 }}
               >
-                {user.firstName}
+                {user.firstName.toUpperCase()}
                 <span
-                  className="ml-2 font-display"
-                  style={{ fontFamily: DISPLAY, color: accentColor }}
+                  className="ml-2"
+                  style={{ fontFamily: DISPLAY, color: accentColor, fontWeight: 700 }}
                 >
-                  {user.lastName}
+                  {user.lastName.toUpperCase()}
                 </span>
               </h1>
               {persona && (
                 <p
-                  className="mt-1 font-mono text-[10.5px]"
+                  className="mt-1 font-mono text-[10.5px] tracking-[0.18em] uppercase"
                   style={{ fontFamily: MONO, color: accentColor }}
                 >
                   {persona.title}
@@ -238,8 +238,8 @@ export default function ProfileStage({
                   <p className={`font-mono text-[8px] uppercase tracking-[0.18em] ${textSub}`} style={{ fontFamily: MONO }}>
                     Full Name
                   </p>
-                  <p className={`font-sans text-[13px] font-medium mt-0.5 ${textPrimary}`} style={{ fontFamily: SANS }}>
-                    {memberName}
+                  <p className={`font-sans text-[13.5px] font-semibold mt-0.5 ${textPrimary}`} style={{ fontFamily: SANS }}>
+                    {memberName.toUpperCase()}
                   </p>
                 </div>
               </div>
@@ -253,7 +253,7 @@ export default function ProfileStage({
                   <p className={`font-mono text-[8px] uppercase tracking-[0.18em] ${textSub}`} style={{ fontFamily: MONO }}>
                     Email
                   </p>
-                  <p className={`font-sans text-[12.5px] mt-0.5 truncate ${textPrimary}`} style={{ fontFamily: SANS }}>
+                  <p className={`font-sans text-[13px] mt-0.5 truncate ${textPrimary}`} style={{ fontFamily: SANS }}>
                     {user.email}
                   </p>
                 </div>
@@ -268,7 +268,7 @@ export default function ProfileStage({
                   <p className={`font-mono text-[8px] uppercase tracking-[0.18em] ${textSub}`} style={{ fontFamily: MONO }}>
                     Rebel Since
                   </p>
-                  <p className={`font-sans text-[12.5px] mt-0.5 ${textPrimary}`} style={{ fontFamily: SANS }}>
+                  <p className={`font-sans text-[13px] mt-0.5 ${textPrimary}`} style={{ fontFamily: SANS }}>
                     {formatDate(user.createdAt)}
                   </p>
                 </div>
@@ -291,8 +291,8 @@ export default function ProfileStage({
                     Your Character
                   </p>
                   <h2
-                    className={`font-display text-lg leading-tight ${textPrimary} mb-2`}
-                    style={{ fontFamily: DISPLAY }}
+                    className={`font-display text-xl leading-tight font-bold ${textPrimary} mb-2`}
+                    style={{ fontFamily: DISPLAY, fontWeight: 700, letterSpacing: "-0.02em" }}
                   >
                     {persona.name} — {persona.title}
                   </h2>

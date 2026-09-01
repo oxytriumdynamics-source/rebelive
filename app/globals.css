@@ -1,3 +1,4 @@
+/* Google Fonts: decorative persona fonts only (Poppins is self-hosted via @fontsource) */
 @import url('https://fonts.googleapis.com/css2?family=Protest+Revolution&family=Rubik+Dirt&family=Black+Ops+One&family=Orbitron:wght@600;700;800;900&family=Syne:wght@700;800&display=swap');
 @import url('https://fonts.cdnfonts.com/css/nasalization');
 @import "tailwindcss";
@@ -17,6 +18,40 @@
   font-display: swap;
 }
 
+/* ─── Code Next Trial (self-hosted from /public/fonts/) ─── */
+@font-face {
+  font-family: 'Code Next';
+  src: url('/fonts/CodeNext-Trial-Regular.otf') format('opentype'),
+       url('/fonts/CodeNext-Trial-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Code Next';
+  src: url('/fonts/CodeNext-Trial-SemiBold.otf') format('opentype'),
+       url('/fonts/CodeNext-Trial-SemiBold.ttf') format('truetype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Code Next';
+  src: url('/fonts/CodeNext-Trial-Bold.otf') format('opentype'),
+       url('/fonts/CodeNext-Trial-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Code Next';
+  src: url('/fonts/CodeNext-Trial-ExtraBold.otf') format('opentype'),
+       url('/fonts/CodeNext-Trial-ExtraBold.ttf') format('truetype');
+  font-weight: 800 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   --ink: #0a0a0a;
   --ink-2: #131313;
@@ -30,9 +65,13 @@
   --ash-dark: #59595a;
   --gold: #d8ac52;
 
-  --font-display: "Anton", "Arial Narrow", sans-serif;
-  --font-body: "Inter", -apple-system, sans-serif;
+  --font-display: "Code Next", "Anton", "Arial Narrow", sans-serif;
+  --font-body: "Poppins", "Inter", -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", "Courier New", monospace;
+
+  /* Explicit named aliases for clarity */
+  --font-heading: "Code Next", "Anton", "Arial Narrow", sans-serif;
+  --font-heading-weight: 700;
 
   --font-apex: "PF Fuel", "PF Fuel Pro", "Rubik Dirt", "Black Ops One", "Anton", sans-serif;
   --font-capella: "Nasalization", "Nasalization Rg", "Orbitron", "Syne", sans-serif;
@@ -53,6 +92,7 @@
   --color-gold: var(--gold);
   --font-display: var(--font-display);
   --font-body: var(--font-body);
+  --font-heading: var(--font-heading);
   --font-mono: var(--font-mono);
   --font-apex: var(--font-apex);
   --font-capella: var(--font-capella);
@@ -71,8 +111,17 @@ html, body {
 body {
   background: var(--ink);
   color: var(--paper);
-  font-family: var(--font-body), -apple-system, "Segoe UI", sans-serif;
+  font-family: var(--font-body);
+  font-weight: 400;
+  letter-spacing: -0.01em;
   /* overflow and position are set per-page; the main app uses fixed inset-0 stages */
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+  letter-spacing: -0.02em;
+  line-height: 1.1;
 }
 
 ::selection {
@@ -96,7 +145,17 @@ button {
 
 .font-display {
   font-family: var(--font-display);
-  letter-spacing: 0.01em;
+  letter-spacing: -0.02em;
+}
+
+.font-heading {
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+  letter-spacing: -0.02em;
+}
+
+.font-body {
+  font-family: var(--font-body);
 }
 
 .font-mono {
