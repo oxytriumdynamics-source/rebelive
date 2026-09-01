@@ -1,13 +1,15 @@
 // ─── Email HTML Templates ──────────────────────────────
-// All templates share the same base layout matching the REBELIVE brand.
+// Clean black-and-white minimal design with REBELIVE logo + panther mascot.
+// Images are served from the frontend (CLIENT_URL env var).
 
-const BASE_STYLE = `
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  background: #0a0a0a;
-  color: #e8e6e0;
-  margin: 0;
-  padding: 0;
-`;
+const CLIENT_URL = process.env.CLIENT_URL ?? 'http://localhost:3000';
+
+// Logo images hosted on the frontend's /public/brand/ folder
+const LOGO_WHITE   = `${CLIENT_URL}/brand/rebelive-white-logo.png`;  // white wordmark (for dark bg)
+const LOGO_BLACK   = `${CLIENT_URL}/brand/REBELIVE Logo Black.png`;  // black wordmark (for white sections)
+const PANTHER_ICON = `${CLIENT_URL}/brand/panther_white_icon-transparent.png`; // mascot seal
+
+// ─── Base wrapper ──────────────────────────────────────
 
 function baseWrapper(content: string): string {
   return `
@@ -18,111 +20,179 @@ function baseWrapper(content: string): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>REBELIVE</title>
 </head>
-<body style="${BASE_STYLE}">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#0a0a0a; padding:40px 16px;">
+<body style="margin:0; padding:0; background:#ffffff; font-family: Arial, Helvetica, sans-serif;">
+
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5; padding:40px 16px;">
     <tr>
       <td align="center">
-        <table width="100%" style="max-width:560px; background:#111111; border:1px solid rgba(216,172,82,0.15); border-radius:2px; overflow:hidden;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px; background:#ffffff; border:1px solid #e0e0e0;">
 
-          <!-- Header -->
+          <!-- ── Header bar (black) ── -->
           <tr>
-            <td style="padding:32px 36px 24px; background: linear-gradient(135deg, #111 0%, #1a1500 100%); border-bottom:1px solid rgba(216,172,82,0.12);">
-              <div style="display:flex; align-items:center; gap:10px;">
-                <div style="width:6px; height:6px; background:#d8ac52; border-radius:50%;"></div>
-                <span style="font-family:'Anton',Arial,sans-serif; font-size:22px; letter-spacing:0.12em; color:#ffffff; text-transform:uppercase;">REBELIVE</span>
-              </div>
-              <p style="margin:6px 0 0; font-size:10px; letter-spacing:0.25em; text-transform:uppercase; color:rgba(216,172,82,0.6);">Wake · Fuel · Rebel</p>
+            <td style="background:#0a0a0a; padding:28px 36px;">
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td>
+                    <!-- REBELIVE wordmark -->
+                    <img
+                      src="${LOGO_WHITE}"
+                      alt="REBELIVE"
+                      width="160"
+                      height="auto"
+                      style="display:block; border:0; max-width:160px;"
+                    />
+                  </td>
+                  <td align="right" valign="middle">
+                    <!-- Panther mascot (moscourt) -->
+                    <img
+                      src="${PANTHER_ICON}"
+                      alt="Panther"
+                      width="36"
+                      height="36"
+                      style="display:block; border:0; opacity:0.75;"
+                    />
+                  </td>
+                </tr>
+              </table>
             </td>
           </tr>
 
-          <!-- Body -->
+          <!-- ── Thin accent rule ── -->
           <tr>
-            <td style="padding:36px;">
+            <td style="height:3px; background:#0a0a0a;"></td>
+          </tr>
+
+          <!-- ── Body ── -->
+          <tr>
+            <td style="padding:40px 36px; background:#ffffff;">
               ${content}
             </td>
           </tr>
 
-          <!-- Footer -->
+          <!-- ── Footer ── -->
           <tr>
-            <td style="padding:20px 36px; border-top:1px solid rgba(255,255,255,0.06); background:#0d0d0d;">
-              <p style="margin:0; font-size:10px; letter-spacing:0.18em; text-transform:uppercase; color:rgba(255,255,255,0.2); text-align:center;">
-                © REBELIVE — This is an automated message, please do not reply.
-              </p>
+            <td style="padding:24px 36px; background:#0a0a0a; border-top:1px solid #1a1a1a;">
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td valign="middle">
+                    <img
+                      src="${LOGO_WHITE}"
+                      alt="REBELIVE"
+                      width="100"
+                      height="auto"
+                      style="display:block; border:0; opacity:0.55;"
+                    />
+                  </td>
+                  <td align="right" valign="middle">
+                    <img
+                      src="${PANTHER_ICON}"
+                      alt="Panther seal"
+                      width="22"
+                      height="22"
+                      style="display:block; border:0; opacity:0.35;"
+                    />
+                  </td>
+                </tr>
+                <tr>
+                  <td colspan="2" style="padding-top:14px;">
+                    <p style="margin:0; font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:rgba(255,255,255,0.25); font-family:Arial,sans-serif;">
+                      Wake &middot; Fuel &middot; Rebel &nbsp;&nbsp;&mdash;&nbsp;&nbsp; &copy; ${new Date().getFullYear()} REBELIVE. Automated message &mdash; please do not reply.
+                    </p>
+                  </td>
+                </tr>
+              </table>
             </td>
           </tr>
 
         </table>
+
+        <!-- ── Spacer below card ── -->
+        <p style="margin:20px 0 0; font-size:10px; color:#aaaaaa; font-family:Arial,sans-serif; letter-spacing:0.1em; text-transform:uppercase;">
+          REBELIVE &mdash; rebelive.com
+        </p>
       </td>
     </tr>
   </table>
+
 </body>
 </html>`;
 }
+
+// ─── Shared inner styles ───────────────────────────────
+
+const S = {
+  eyebrow: 'margin:0 0 8px; font-size:10px; letter-spacing:0.28em; text-transform:uppercase; color:#888888; font-family:Arial,sans-serif;',
+  h1:      'margin:0 0 18px; font-size:26px; font-weight:700; color:#0a0a0a; letter-spacing:-0.02em; line-height:1.2; font-family:Arial,Helvetica,sans-serif;',
+  body:    'margin:0 0 24px; font-size:14px; line-height:1.75; color:#444444; font-family:Arial,sans-serif;',
+  strong:  'color:#0a0a0a;',
+  rule:    'border:none; border-top:1px solid #e8e8e8; margin:28px 0;',
+  note:    'margin:0; font-size:11px; color:#bbbbbb; text-align:center; font-family:Arial,sans-serif; letter-spacing:0.06em;',
+};
 
 // ─── OTP Email ─────────────────────────────────────────
 
 export function otpEmailHtml(opts: { firstName: string; otp: string }): string {
   const content = `
-    <h2 style="margin:0 0 6px; font-size:11px; letter-spacing:0.28em; text-transform:uppercase; color:rgba(216,172,82,0.7);">
-      Verify Your Identity
-    </h2>
-    <h1 style="margin:0 0 20px; font-size:28px; font-weight:700; color:#ffffff; letter-spacing:-0.01em;">
-      Your verification code
-    </h1>
-    <p style="margin:0 0 28px; font-size:14px; line-height:1.7; color:rgba(255,255,255,0.55);">
-      Hey <strong style="color:#e8e6e0;">${opts.firstName}</strong>, use the code below to verify your REBELIVE account.
-      It expires in <strong style="color:#d8ac52;">10 minutes</strong>.
+    <p style="${S.eyebrow}">Verification</p>
+    <h1 style="${S.h1}">Your one-time code</h1>
+    <p style="${S.body}">
+      Hey <strong style="${S.strong}">${opts.firstName}</strong>, use the code below to verify your REBELIVE account.
+      It expires in <strong style="${S.strong}">10 minutes</strong>.
     </p>
 
     <!-- OTP box -->
-    <div style="text-align:center; margin:0 0 28px;">
-      <div style="display:inline-block; background:rgba(216,172,82,0.08); border:1px solid rgba(216,172,82,0.3); padding:20px 40px; border-radius:2px;">
-        <span style="font-family:'Courier New',monospace; font-size:38px; font-weight:700; letter-spacing:0.5em; color:#d8ac52; padding-right:-0.5em;">
-          ${opts.otp}
-        </span>
-      </div>
-    </div>
+    <table cellpadding="0" cellspacing="0" style="margin:0 0 28px; width:100%;">
+      <tr>
+        <td align="center">
+          <div style="display:inline-block; background:#0a0a0a; padding:22px 48px;">
+            <span style="font-family:'Courier New',Courier,monospace; font-size:40px; font-weight:700; letter-spacing:0.55em; color:#ffffff; padding-right:-0.55em; display:block;">
+              ${opts.otp}
+            </span>
+          </div>
+        </td>
+      </tr>
+    </table>
 
-    <p style="margin:0; font-size:12px; color:rgba(255,255,255,0.3); text-align:center; letter-spacing:0.06em;">
-      If you didn't request this, you can safely ignore this email.
-    </p>
+    <hr style="${S.rule}"/>
+    <p style="${S.note}">If you didn't request this, you can safely ignore this email.</p>
   `;
   return baseWrapper(content);
 }
 
-// ─── Greeting / Welcome Email ──────────────────────────
+// ─── Welcome / Greeting Email ──────────────────────────
 
 export function greetingEmailHtml(opts: { firstName: string }): string {
   const content = `
-    <h2 style="margin:0 0 6px; font-size:11px; letter-spacing:0.28em; text-transform:uppercase; color:rgba(216,172,82,0.7);">
-      Welcome to the Pack
-    </h2>
-    <h1 style="margin:0 0 20px; font-size:30px; font-weight:700; color:#ffffff; letter-spacing:-0.01em;">
-      Your Rebel ID is live, ${opts.firstName}.
-    </h1>
-    <p style="margin:0 0 24px; font-size:14px; line-height:1.7; color:rgba(255,255,255,0.55);">
-      Welcome to <strong style="color:#d8ac52;">REBELIVE</strong>. You've just unlocked access to the rebel world — personalised drops, exclusive rewards, and a community that moves differently.
+    <p style="${S.eyebrow}">Welcome to the pack</p>
+    <h1 style="${S.h1}">Your Rebel ID is live, ${opts.firstName}.</h1>
+    <p style="${S.body}">
+      Welcome to <strong style="${S.strong}">REBELIVE</strong>. You've just unlocked access to the rebel world — personalised drops, exclusive rewards, and a community that moves differently.
     </p>
 
-    <div style="background:rgba(216,172,82,0.06); border-left:3px solid #d8ac52; padding:16px 20px; margin:0 0 28px; border-radius:1px;">
-      <p style="margin:0; font-size:13px; line-height:1.6; color:rgba(255,255,255,0.7);">
-        <strong style="color:#d8ac52;">Next step:</strong> Verify your email using the OTP we just sent — then take the quiz to discover your rebel persona.
-      </p>
-    </div>
-
-    <table cellpadding="0" cellspacing="0" style="margin:0 auto 32px;">
+    <!-- Next step callout -->
+    <table cellpadding="0" cellspacing="0" style="margin:0 0 28px; width:100%; border-left:3px solid #0a0a0a;">
       <tr>
-        <td style="background:#d8ac52; padding:0;">
-          <a href="http://localhost:3000/auth" style="display:block; padding:14px 32px; font-size:11px; font-weight:600; letter-spacing:0.22em; text-transform:uppercase; color:#0a0a0a; text-decoration:none;">
-            Go to REBELIVE →
+        <td style="padding:14px 18px; background:#f8f8f8;">
+          <p style="margin:0; font-size:13px; line-height:1.65; color:#444444; font-family:Arial,sans-serif;">
+            <strong style="${S.strong}">Next step:</strong> Verify your email with the OTP we sent, then take the quiz to discover your rebel persona — APEX, CAPELLA, or AVIVA.
+          </p>
+        </td>
+      </tr>
+    </table>
+
+    <!-- CTA button -->
+    <table cellpadding="0" cellspacing="0" style="margin:0 0 32px;">
+      <tr>
+        <td style="background:#0a0a0a;">
+          <a href="${CLIENT_URL}/auth" style="display:block; padding:14px 36px; font-size:11px; font-weight:700; letter-spacing:0.22em; text-transform:uppercase; color:#ffffff; text-decoration:none; font-family:Arial,sans-serif;">
+            Go to REBELIVE &rarr;
           </a>
         </td>
       </tr>
     </table>
 
-    <p style="margin:0; font-size:12px; color:rgba(255,255,255,0.25); text-align:center; letter-spacing:0.06em;">
-      Wake · Fuel · Rebel — this is just the beginning.
-    </p>
+    <hr style="${S.rule}"/>
+    <p style="${S.note}">Wake &middot; Fuel &middot; Rebel &mdash; this is just the beginning.</p>
   `;
   return baseWrapper(content);
 }
