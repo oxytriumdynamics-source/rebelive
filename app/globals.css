@@ -10,6 +10,7 @@
   font-style: normal;
   font-display: swap;
 }
+
 @font-face {
   font-family: 'PF Fuel Pro';
   src: local('PF Fuel Pro'), local('PFFuelPro-Regular'), url('/fonts/PFFuelPro.otf') format('opentype'), url('/fonts/PFFuelPro.woff2') format('woff2');
@@ -22,31 +23,34 @@
 @font-face {
   font-family: 'Code Next';
   src: url('/fonts/CodeNext-Trial-Regular.otf') format('opentype'),
-       url('/fonts/CodeNext-Trial-Regular.ttf') format('truetype');
+    url('/fonts/CodeNext-Trial-Regular.ttf') format('truetype');
   font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
+
 @font-face {
   font-family: 'Code Next';
   src: url('/fonts/CodeNext-Trial-SemiBold.otf') format('opentype'),
-       url('/fonts/CodeNext-Trial-SemiBold.ttf') format('truetype');
+    url('/fonts/CodeNext-Trial-SemiBold.ttf') format('truetype');
   font-weight: 600;
   font-style: normal;
   font-display: swap;
 }
+
 @font-face {
   font-family: 'Code Next';
   src: url('/fonts/CodeNext-Trial-Bold.otf') format('opentype'),
-       url('/fonts/CodeNext-Trial-Bold.ttf') format('truetype');
+    url('/fonts/CodeNext-Trial-Bold.ttf') format('truetype');
   font-weight: 700;
   font-style: normal;
   font-display: swap;
 }
+
 @font-face {
   font-family: 'Code Next';
   src: url('/fonts/CodeNext-Trial-ExtraBold.otf') format('opentype'),
-       url('/fonts/CodeNext-Trial-ExtraBold.ttf') format('truetype');
+    url('/fonts/CodeNext-Trial-ExtraBold.ttf') format('truetype');
   font-weight: 800 900;
   font-style: normal;
   font-display: swap;
@@ -103,7 +107,8 @@
   box-sizing: border-box;
 }
 
-html, body {
+html,
+body {
   height: 100%;
   overscroll-behavior: none;
 }
@@ -117,7 +122,12 @@ body {
   /* overflow and position are set per-page; the main app uses fixed inset-0 stages */
 }
 
-h1, h2, h3, h4, h5, h6 {
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
   font-family: var(--font-heading);
   font-weight: var(--font-heading-weight);
   letter-spacing: -0.02em;
@@ -138,6 +148,7 @@ button {
 .thin-scroll::-webkit-scrollbar {
   width: 4px;
 }
+
 .thin-scroll::-webkit-scrollbar-thumb {
   background: var(--line);
   border-radius: 4px;
@@ -165,87 +176,207 @@ button {
 /* ─── Background motion keyframes ─── */
 
 @keyframes driftLines {
-  0%   { transform: translate(0, 0) rotate(0deg); }
-  100% { transform: translate(-50px, -35px) rotate(1deg); }
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+
+  100% {
+    transform: translate(-50px, -35px) rotate(1deg);
+  }
 }
 
 @keyframes driftSlow {
-  0%   { transform: translate(0, 0); }
-  50%  { transform: translate(-20px, -15px); }
-  100% { transform: translate(0, 0); }
+  0% {
+    transform: translate(0, 0);
+  }
+
+  50% {
+    transform: translate(-20px, -15px);
+  }
+
+  100% {
+    transform: translate(0, 0);
+  }
 }
 
 @keyframes pulseRing {
-  0%   { transform: scale(0.6); opacity: 0.55; }
-  100% { transform: scale(2.6); opacity: 0; }
+  0% {
+    transform: scale(0.6);
+    opacity: 0.55;
+  }
+
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
 }
 
 @keyframes twinkle {
-  0%, 100% { opacity: 0.25; transform: scale(0.85); }
-  50%       { opacity: 1; transform: scale(1.15); }
+
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.85);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
 }
 
 @keyframes floatY {
-  0%, 100% { transform: translateY(0px); }
-  50%       { transform: translateY(-12px); }
+
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+
+  50% {
+    transform: translateY(-12px);
+  }
 }
 
 @keyframes glowPulse {
-  0%, 100% { opacity: 0.35; }
-  50%       { opacity: 0.7; }
+
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+
+  50% {
+    opacity: 0.7;
+  }
 }
 
 @keyframes scanLine {
-  0%   { transform: translateY(-100%); opacity: 0; }
-  10%  { opacity: 0.4; }
-  90%  { opacity: 0.4; }
-  100% { transform: translateY(100vh); opacity: 0; }
+  0% {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+
+  10% {
+    opacity: 0.4;
+  }
+
+  90% {
+    opacity: 0.4;
+  }
+
+  100% {
+    transform: translateY(100vh);
+    opacity: 0;
+  }
 }
 
 @keyframes bgFloat {
-  0%, 100% { transform: translate(0,0) scale(1); }
-  33%       { transform: translate(-8px, -6px) scale(1.005); }
-  66%       { transform: translate(6px, -10px) scale(0.998); }
+
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+
+  33% {
+    transform: translate(-8px, -6px) scale(1.005);
+  }
+
+  66% {
+    transform: translate(6px, -10px) scale(0.998);
+  }
 }
 
 @keyframes textReveal {
-  0%   { clip-path: inset(0 100% 0 0); }
-  100% { clip-path: inset(0 0% 0 0); }
+  0% {
+    clip-path: inset(0 100% 0 0);
+  }
+
+  100% {
+    clip-path: inset(0 0% 0 0);
+  }
 }
 
 /* Mountain Fog & Cloud movement */
 @keyframes fogDrift1 {
-  0%   { transform: translate3d(-10%, 0, 0) scale(1.1); }
-  50%  { transform: translate3d(5%, -15px, 0) scale(1.15); }
-  100% { transform: translate3d(20%, 0, 0) scale(1.1); }
+  0% {
+    transform: translate3d(-10%, 0, 0) scale(1.1);
+  }
+
+  50% {
+    transform: translate3d(5%, -15px, 0) scale(1.15);
+  }
+
+  100% {
+    transform: translate3d(20%, 0, 0) scale(1.1);
+  }
 }
 
 @keyframes fogDrift2 {
-  0%   { transform: translate3d(15%, -10px, 0) scale(1.12); }
-  50%  { transform: translate3d(-5%, 15px, 0) scale(1.18); }
-  100% { transform: translate3d(-20%, -10px, 0) scale(1.12); }
+  0% {
+    transform: translate3d(15%, -10px, 0) scale(1.12);
+  }
+
+  50% {
+    transform: translate3d(-5%, 15px, 0) scale(1.18);
+  }
+
+  100% {
+    transform: translate3d(-20%, -10px, 0) scale(1.12);
+  }
 }
 
 @keyframes cloudDriftSlow {
-  0%   { transform: translate3d(-80px, 0, 0); }
-  50%  { transform: translate3d(60px, -20px, 0); }
-  100% { transform: translate3d(120px, 0, 0); }
+  0% {
+    transform: translate3d(-80px, 0, 0);
+  }
+
+  50% {
+    transform: translate3d(60px, -20px, 0);
+  }
+
+  100% {
+    transform: translate3d(120px, 0, 0);
+  }
 }
 
 /* Capella Radiant Pulse */
 @keyframes capellaCorona {
-  0%, 100% { transform: scale(1) rotate(0deg); opacity: 0.85; }
-  50%       { transform: scale(1.22) rotate(180deg); opacity: 1; }
+
+  0%,
+  100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 0.85;
+  }
+
+  50% {
+    transform: scale(1.22) rotate(180deg);
+    opacity: 1;
+  }
 }
 
 @keyframes capellaRays {
-  0%, 100% { transform: scale(1) rotate(0deg); opacity: 0.9; }
-  50%       { transform: scale(1.3) rotate(45deg); opacity: 1; }
+
+  0%,
+  100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 0.9;
+  }
+
+  50% {
+    transform: scale(1.3) rotate(45deg);
+    opacity: 1;
+  }
 }
 
 @keyframes capellaBeacon {
-  0%, 100% { box-shadow: 0 0 25px 8px rgba(254, 240, 138, 0.7), 0 0 60px 20px rgba(245, 158, 11, 0.4), 0 0 100px 35px rgba(234, 179, 8, 0.2); }
-  50%       { box-shadow: 0 0 35px 12px rgba(254, 240, 138, 0.95), 0 0 80px 30px rgba(245, 158, 11, 0.55), 0 0 130px 50px rgba(234, 179, 8, 0.3); }
+
+  0%,
+  100% {
+    box-shadow: 0 0 25px 8px rgba(254, 240, 138, 0.7), 0 0 60px 20px rgba(245, 158, 11, 0.4), 0 0 100px 35px rgba(234, 179, 8, 0.2);
+  }
+
+  50% {
+    box-shadow: 0 0 35px 12px rgba(254, 240, 138, 0.95), 0 0 80px 30px rgba(245, 158, 11, 0.55), 0 0 130px 50px rgba(234, 179, 8, 0.3);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -255,4 +386,3 @@ button {
     transition-duration: 0.001ms !important;
   }
 }
-

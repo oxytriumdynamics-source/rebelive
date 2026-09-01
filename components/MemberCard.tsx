@@ -229,8 +229,8 @@ export default function MemberCard({
               {/* Panther Insignia Badge (Uniform as CAPELLA) */}
               <div
                 className={`flex h-10 w-10 items-center justify-center rounded-full  p-1 shadow-sm ${isApex
-                    ? "border-white/50 bg-black/60 backdrop-blur-xs"
-                    : "border-black bg-white"
+                  ? "border-white/50 bg-black/60 backdrop-blur-xs"
+                  : "border-black bg-white"
                   }`}
               >
                 <div className="relative h-full w-full">
@@ -294,15 +294,15 @@ export default function MemberCard({
                     {memberName.split(" ")[0]}<br />{memberName.split(" ").slice(1).join(" ")}
                   </p>
                   <div className="my-2.5 h-[1.5px] w-6 bg-white/70" />
-                  <h2
+                  <div
                     className="text-4xl leading-none tracking-wider text-white"
                     style={{
                       fontFamily: persona.fontFamily,
-                      textShadow: "0 2px 10px rgba(0,0,0,0.5)",
+                      textShadow: "0 1px 10px rgba(0,0,0,0.5)",
                     }}
                   >
                     APEX
-                  </h2>
+                  </div>
                 </>
               ) : isCapella ? (
                 <>
@@ -313,14 +313,14 @@ export default function MemberCard({
                     {memberName.split(" ")[0]}<br />{memberName.split(" ").slice(1).join(" ")}
                   </p>
                   <div className="mb-2.5 h-[1.5px] w-6 bg-black/70" />
-                  <h2
+                  <div
                     className="mt-3 text-3xl leading-none tracking-[0.02em] text-[#111110]"
                     style={{
                       fontFamily: persona.fontFamily,
                     }}
                   >
                     CAPELLA
-                  </h2>
+                  </div>
                 </>
               ) : (
                 <>
@@ -331,14 +331,14 @@ export default function MemberCard({
                     {memberName.split(" ")[0]}<br />{memberName.split(" ").slice(1).join(" ")}
                   </p>
                   <div className="mb-2.5 h-[1.5px] w-6 bg-black/70" />
-                  <h2
+                  <div
                     className="mt-2 text-4xl leading-none tracking-wider text-[#111110]"
                     style={{
                       fontFamily: persona.fontFamily,
                     }}
                   >
                     AVIVA
-                  </h2>
+                  </div>
                 </>
               )}
             </div>
@@ -447,7 +447,7 @@ export default function MemberCard({
             <div className="relative z-10 my-auto flex flex-col gap-3 py-1">
               {/* Persona Title Header */}
               <div>
-                <h2 className="flex items-baseline gap-2 leading-none">
+                <div className="flex items-baseline gap-2 leading-none">
                   <span
                     className="text-2xl tracking-tight"
                     style={{
@@ -466,7 +466,7 @@ export default function MemberCard({
                   >
                     : {persona.cardSubtitle}
                   </span>
-                </h2>
+                </div>
               </div>
 
               {/* Quote Block */}
