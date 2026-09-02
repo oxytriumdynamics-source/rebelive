@@ -48,21 +48,106 @@ export interface AuthState {
   otpError: string | null;
 }
 
+// ─── Storage helper ────────────────────────────────────
+// localStorage persists across browser closes, unlike sessionStorage.
+
+const TOKEN_KEY = 'accessToken';
+
+function saveToken(token: string) {
+  if (typeof window !== 'undefined') localStorage.setItem(TOKEN_KEY, token);
+}
+
+function clearToken() {
+  if (typeof window !== 'undefined') localStorage.removeItem(TOKEN_KEY);
+}
+
+function readToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(TOKEN_KEY);
+}
+
 // ─── API Base ──────────────────────────────────────────
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5000/api/v1';
+
 const API = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5000/api/v1',
+  baseURL: API_BASE,
   withCredentials: true, // send cookies (refresh token)
 });
 
-// Attach access token if present
+// ── Request interceptor: attach stored access token ──
 API.interceptors.request.use((config) => {
-  if (typeof window !== 'undefined') {
-    const token = sessionStorage.getItem('accessToken');
-    if (token) config.headers.Authorization = `Bearer ${token}`;
-  }
+  const token = readToken();
+  if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
+
+// ── Response interceptor: silent token refresh on 401 ──
+// When the 15-min access token expires, automatically call /auth/refresh
+// (which uses the 7-day httpOnly refresh cookie) to get a new token, then
+// retry the original request. This keeps the user logged in across sessions.
+
+let isRefreshing = false;
+let refreshQueue: Array<(newToken: string | null) => void> = [];
+
+API.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const original = error.config as typeof error.config & { _retry?: boolean };
+
+    const is401 = error.response?.status === 401;
+    const isRefreshEndpoint = original?.url?.includes('/auth/refresh');
+    const alreadyRetried = original?._retry;
+
+    if (!is401 || isRefreshEndpoint || alreadyRetried) {
+      return Promise.reject(error);
+    }
+
+    // If a refresh is already in flight, queue this request
+    if (isRefreshing) {
+      return new Promise((resolve, reject) => {
+        refreshQueue.push((newToken) => {
+          if (newToken) {
+            original.headers.Authorization = `Bearer ${newToken}`;
+            resolve(API(original));
+          } else {
+            reject(error);
+          }
+        });
+      });
+    }
+
+    original._retry = true;
+    isRefreshing = true;
+
+    try {
+      // Use a plain axios call (not API) to avoid triggering this interceptor again
+      const { data } = await axios.post(
+        `${API_BASE}/auth/refresh`,
+        {},
+        { withCredentials: true },
+      );
+      const newToken: string = data.data.accessToken;
+      saveToken(newToken);
+
+      // Drain the queue with the new token
+      refreshQueue.forEach((cb) => cb(newToken));
+      refreshQueue = [];
+
+      // Retry the original request
+      original.headers.Authorization = `Bearer ${newToken}`;
+      return API(original);
+    } catch {
+      // Refresh failed (expired / revoked refresh token) — force logout
+      clearToken();
+      refreshQueue.forEach((cb) => cb(null));
+      refreshQueue = [];
+      return Promise.reject(error);
+    } finally {
+      isRefreshing = false;
+    }
+  },
+);
 
 // ─── Async Thunks ──────────────────────────────────────
 
@@ -166,8 +251,7 @@ export const logoutUser = createAsyncThunk('auth/logout', async (_, { rejectWith
 
 /** Initiate Google OAuth — this just redirects the browser */
 export function googleLogin(): void {
-  const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5000/api/v1';
-  window.location.href = `${apiBase}/auth/google`;
+  window.location.href = `${API_BASE}/auth/google`;
 }
 
 /** Claim a persona for a logged-in user (called after signup or manually) */
@@ -207,9 +291,7 @@ const authSlice = createSlice({
     /** Manually set access token (e.g., from Google OAuth callback) */
     setAccessToken(state, action: PayloadAction<string>) {
       state.accessToken = action.payload;
-      if (typeof window !== 'undefined') {
-        sessionStorage.setItem('accessToken', action.payload);
-      }
+      saveToken(action.payload);
     },
     /** Clear all auth state (client-side logout) */
     clearAuth(state) {
@@ -220,9 +302,7 @@ const authSlice = createSlice({
       state.error = null;
       state.otpSent = false;
       state.otpError = null;
-      if (typeof window !== 'undefined') {
-        sessionStorage.removeItem('accessToken');
-      }
+      clearToken();
     },
     clearError(state) {
       state.error = null;
@@ -240,10 +320,11 @@ const authSlice = createSlice({
         state.loading = false;
         state.user = payload.user;
         state.emailVerified = payload.emailVerified ?? false;
-        // After register, user is NOT yet verified — don't set isAuthenticated
+        // Keep access token in Redux memory ONLY — do NOT persist to localStorage.
+        // If the user navigates away before verifying OTP, the home page will NOT
+        // find a token and will NOT call getMe(), preventing a bypass of the OTP gate.
         if (payload.accessToken) {
           state.accessToken = payload.accessToken;
-          sessionStorage.setItem('accessToken', payload.accessToken);
         }
         state.otpSent = true; // OTP is sent right after register
       })
@@ -266,7 +347,7 @@ const authSlice = createSlice({
         if (payload.emailVerified && payload.accessToken) {
           state.accessToken = payload.accessToken;
           state.isAuthenticated = true;
-          sessionStorage.setItem('accessToken', payload.accessToken);
+          saveToken(payload.accessToken); // persists across browser closes
         } else {
           // Not verified — frontend will switch to OTP stage
           state.otpSent = true;
@@ -303,7 +384,7 @@ const authSlice = createSlice({
         state.otpSent = false;
         if (payload.accessToken) {
           state.accessToken = payload.accessToken;
-          sessionStorage.setItem('accessToken', payload.accessToken);
+          saveToken(payload.accessToken); // persists across browser closes
         }
         // Auto-claim pending persona if the user just signed up
         // The claimPersona thunk will be dispatched by the component after this
@@ -337,13 +418,27 @@ const authSlice = createSlice({
       .addCase(getMe.fulfilled, (state, { payload }) => {
         state.loading = false;
         state.user = payload;
-        state.isAuthenticated = true;
         state.emailVerified = payload.emailVerified;
+        if (payload.emailVerified) {
+          // Fully verified — grant authentication
+          state.isAuthenticated = true;
+        } else {
+          // Account exists but email not yet verified.
+          // Clear any stale token from localStorage so the home page
+          // won't keep trying to auto-login this unverified user.
+          state.isAuthenticated = false;
+          state.accessToken = null;
+          clearToken();
+        }
       })
       .addCase(getMe.rejected, (state) => {
         state.loading = false;
         state.user = null;
         state.isAuthenticated = false;
+        // Don't clear localStorage here — the refresh interceptor will
+        // have already attempted a refresh. If it also failed, the token
+        // was cleared by the interceptor. If the error was transient
+        // (network), we don't want to force logout.
       });
 
     // ── Logout ────────────────────────────────────────
@@ -353,9 +448,7 @@ const authSlice = createSlice({
         state.accessToken = null;
         state.isAuthenticated = false;
         state.emailVerified = false;
-        if (typeof window !== 'undefined') {
-          sessionStorage.removeItem('accessToken');
-        }
+        clearToken(); // remove persisted token
       });
   },
 });

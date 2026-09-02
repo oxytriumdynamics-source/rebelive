@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { AnimatePresence } from "framer-motion";
 import LandingStage from "@/components/LandingStage";
 import QuizStage from "@/components/QuizStage";
@@ -23,10 +24,12 @@ export default function Home() {
   const [answers, setAnswers] = useState<Answer[]>([]);
   const [result, setResult] = useState<ScoreResult | null>(null);
 
-  // Hydrate auth state on first load
+  const router = useRouter();
+
+  // Hydrate auth state on first load (token persists in localStorage across browser closes)
   useEffect(() => {
     if (typeof window !== "undefined") {
-      const token = sessionStorage.getItem("accessToken");
+      const token = localStorage.getItem("accessToken");
       if (token && !isAuthenticated) {
         dispatch(getMe());
       }
@@ -34,7 +37,15 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Switch to profile if user is authenticated
+  // Redirect unverified users to /auth to complete OTP
+  // This handles the case where the user pressed Back during the OTP stage.
+  useEffect(() => {
+    if (!loading && user && !isAuthenticated && !user.emailVerified) {
+      router.replace('/auth');
+    }
+  }, [loading, user, isAuthenticated, router]);
+
+  // Switch to profile once fully authenticated
   useEffect(() => {
     if (isAuthenticated && user) {
       setStage("profile");

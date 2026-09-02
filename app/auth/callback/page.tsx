@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAppDispatch } from "@/store/hooks";
-import { setAccessToken, getMe } from "@/store/slices/authslice";
+import { setAccessToken, getMe, claimPersona } from "@/store/slices/authslice";
 
 /** Spinner UI shown while completing sign-in */
 const LoadingSpinner = () => (
@@ -61,8 +61,19 @@ function AuthCallbackInner() {
 
     // Store token and load user profile
     dispatch(setAccessToken(token));
-    dispatch(getMe()).then((action) => {
+    dispatch(getMe()).then(async (action) => {
       if (getMe.fulfilled.match(action)) {
+        // ── Auto-claim pending persona from quiz result page ──
+        // sessionStorage persists across same-tab redirects (Google OAuth
+        // redirects back to this tab), so the value set in ResultStage
+        // is still here when we land on /auth/callback.
+        if (typeof window !== "undefined") {
+          const pending = sessionStorage.getItem("pendingPersona");
+          if (pending) {
+            sessionStorage.removeItem("pendingPersona");
+            await dispatch(claimPersona(pending.toLowerCase()));
+          }
+        }
         router.replace("/");
       } else {
         router.replace("/auth?error=oauth_failed");

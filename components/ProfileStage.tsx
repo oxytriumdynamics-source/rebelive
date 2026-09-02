@@ -55,8 +55,8 @@ export default function ProfileStage({
   // Theme based on persona (or default neutral)
   const bg = isApex ? "#090909" : persona ? "#f0efeb" : "#f0efeb";
   const textPrimary = isApex ? "text-white" : "text-[#0a0a0a]";
-  const textSub = isApex ? "text-white/45" : "text-[#0a0a0a]/45";
-  const borderColor = isApex ? "border-white/10" : "border-black/10";
+  const textSub = isApex ? "text-white/70" : "text-[#0a0a0a]/70";
+  const borderColor = isApex ? "border-white/15" : "border-black/15";
   const panelBg = isApex ? "bg-white/[0.04]" : "bg-black/[0.03]";
   const halftoneRgb = isApex ? "255,255,255" : isCapella ? "200,146,42" : persona ? "232,98,138" : "0,0,0";
   const patternStroke = isApex ? "#ffffff" : isCapella ? "#c8922a" : persona ? "#e8628a" : "#0a0a0a";

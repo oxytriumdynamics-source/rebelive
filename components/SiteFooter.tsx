@@ -16,7 +16,7 @@ interface SiteFooterProps {
  */
 export default function SiteFooter({
   borderColor = "border-black/10",
-  textColor = "text-black/45",
+  textColor = "text-black/65",
   className = "",
 }: SiteFooterProps) {
   return (
@@ -50,16 +50,16 @@ export default function SiteFooter({
       <div className="flex items-center gap-3 shrink-0">
         <Link
           href="/privacy"
-          className="font-mono text-[10px] uppercase tracking-[0.18em] transition-opacity hover:opacity-100 opacity-80"
+          className="font-mono text-[10px] uppercase tracking-[0.18em] transition-opacity hover:opacity-100"
           style={{ fontFamily: MONO }}
         >
           <span className="hidden sm:inline">Privacy Policy</span>
           <span className="sm:hidden">Privacy</span>
         </Link>
-        <span className="opacity-30">·</span>
+        <span className="opacity-55">·</span>
         <Link
           href="/terms"
-          className="font-mono text-[10px] uppercase tracking-[0.18em] transition-opacity hover:opacity-100 opacity-80"
+          className="font-mono text-[10px] uppercase tracking-[0.18em] transition-opacity hover:opacity-100"
           style={{ fontFamily: MONO }}
         >
           <span className="hidden sm:inline">Terms of Service</span>
