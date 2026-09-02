@@ -71,7 +71,7 @@ export async function registerUser(
   input: RegisterInput,
 ): Promise<{ user: Partial<User>; tokens: TokenPair }> {
   const existing = await prisma.user.findUnique({ where: { email: input.email } });
-  if (existing) throw new ConflictError('Email already registered');
+  if (existing) throw new ConflictError('An account with this email already exists. Try signing in instead.');
 
   const passwordHash = await hashPassword(input.password);
 
@@ -104,10 +104,12 @@ export async function loginUser(
   input: LoginInput,
 ): Promise<{ user: Partial<User>; tokens: TokenPair; emailVerified: boolean }> {
   const user = await prisma.user.findUnique({ where: { email: input.email } });
-  if (!user || !user.passwordHash) throw new UnauthorizedError('Invalid email or password');
+  if (!user || !user.passwordHash) {
+    throw new NotFoundError('No account found with this email. Did you mean to sign up?');
+  }
 
   const valid = await verifyPassword(input.password, user.passwordHash);
-  if (!valid) throw new UnauthorizedError('Invalid email or password');
+  if (!valid) throw new UnauthorizedError('Incorrect password. Please try again.');
 
   // If email not verified, send a fresh OTP and respond with flag
   if (!user.emailVerified) {
