@@ -97,7 +97,7 @@ passport.use(
           sendMail({
             to: user.email,
             subject: 'Welcome to REBELIVE — Your Rebel ID is live 🔥',
-            html: greetingEmailHtml({ firstName: user.firstName }),
+            html: greetingEmailHtml({ firstName: user.firstName, persona: null }),
           });
         } else if (!user.googleId) {
           // Existing local user — link Google account

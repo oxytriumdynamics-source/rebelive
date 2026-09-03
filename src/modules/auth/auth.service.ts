@@ -247,11 +247,20 @@ export async function verifyOtp(
 
   logger.info(`[Auth] Email verified: ${user.email}`);
 
+  // Fetch the persona assigned before verification (if any)
+  const preference = await prisma.userPreference.findUnique({
+    where: { userId: verified.id },
+    include: { personalityType: true },
+  });
+
   // Now that email is confirmed, send the welcome mail (non-blocking)
   sendMail({
     to: verified.email,
     subject: 'Welcome to REBELIVE — Your Rebel ID is live 🔥',
-    html: greetingEmailHtml({ firstName: verified.firstName }),
+    html: greetingEmailHtml({
+      firstName: verified.firstName,
+      persona: preference?.personalityType ?? null,
+    }),
   });
 
   const tokens = await generateAndStoreTokens(verified);

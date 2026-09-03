@@ -5,7 +5,7 @@
 const CLIENT_URL = process.env.CLIENT_URL ?? 'http://localhost:3000';
 
 // Logo images hosted on the frontend's /public/brand/ folder
-const LOGO_WHITE   = `${CLIENT_URL}/brand/rebelive-white-logo.png`;  // white wordmark (for dark bg)
+const LOGO_WHITE   = `${CLIENT_URL}/brand/rebelive-white.png`;  // white wordmark (for dark bg)
 const LOGO_BLACK   = `${CLIENT_URL}/brand/REBELIVE Logo Black.png`;  // black wordmark (for white sections)
 const PANTHER_ICON = `${CLIENT_URL}/brand/panther_white_icon-transparent.png`; // mascot seal
 
@@ -161,30 +161,55 @@ export function otpEmailHtml(opts: { firstName: string; otp: string }): string {
 
 // ─── Welcome / Greeting Email ──────────────────────────
 
-export function greetingEmailHtml(opts: { firstName: string }): string {
-  const content = `
-    <p style="${S.eyebrow}">Welcome to the pack</p>
-    <h1 style="${S.h1}">Your Rebel ID is live, ${opts.firstName}.</h1>
-    <p style="${S.body}">
-      Welcome to <strong style="${S.strong}">REBELIVE</strong>. You've just unlocked access to the rebel world — personalised drops, exclusive rewards, and a community that moves differently.
-    </p>
+export function greetingEmailHtml(opts: {
+  firstName: string;
+  persona?: { name: string; tagline?: string | null } | null;
+}): string {
+  const { firstName, persona } = opts;
 
-    <!-- Next step callout -->
+  // Persona reveal block — shown only when a persona is assigned
+  const personaBlock = persona
+    ? `
+    <!-- Persona reveal -->
+    <table cellpadding="0" cellspacing="0" style="margin:0 0 28px; width:100%;">
+      <tr>
+        <td style="background:#0a0a0a; padding:24px 28px;">
+          <p style="margin:0 0 6px; font-size:9px; letter-spacing:0.3em; text-transform:uppercase; color:rgba(255,255,255,0.45); font-family:Arial,sans-serif;">
+            Your Rebel Persona
+          </p>
+          <p style="margin:0; font-size:28px; font-weight:700; color:#ffffff; letter-spacing:0.04em; font-family:Arial,Helvetica,sans-serif; text-transform:uppercase;">
+            ${persona.name}
+          </p>
+          ${persona.tagline ? `<p style="margin:10px 0 0; font-size:12px; line-height:1.6; color:rgba(255,255,255,0.6); font-family:Arial,sans-serif;">${persona.tagline}</p>` : ''}
+        </td>
+      </tr>
+    </table>`
+    : `
+    <!-- No persona yet — invite to take the quiz -->
     <table cellpadding="0" cellspacing="0" style="margin:0 0 28px; width:100%; border-left:3px solid #0a0a0a;">
       <tr>
         <td style="padding:14px 18px; background:#f8f8f8;">
           <p style="margin:0; font-size:13px; line-height:1.65; color:#444444; font-family:Arial,sans-serif;">
-            <strong style="${S.strong}">Next step:</strong> Verify your email with the OTP we sent, then take the quiz to discover your rebel persona — APEX, CAPELLA, or AVIVA.
+            <strong style="${S.strong}">Next step:</strong> Take the quiz to discover your rebel persona &mdash; APEX, CAPELLA, or AVIVA &mdash; and unlock your annual drop.
           </p>
         </td>
       </tr>
-    </table>
+    </table>`;
+
+  const content = `
+    <p style="${S.eyebrow}">Welcome to the pack</p>
+    <h1 style="${S.h1}">Your Rebel ID is live, ${firstName}.</h1>
+    <p style="${S.body}">
+      Welcome to <strong style="${S.strong}">REBELIVE</strong>. You've just unlocked access to the rebel world &mdash; personalised drops, exclusive rewards, and a community that moves differently.
+    </p>
+
+    ${personaBlock}
 
     <!-- CTA button -->
     <table cellpadding="0" cellspacing="0" style="margin:0 0 32px;">
       <tr>
         <td style="background:#0a0a0a;">
-          <a href="${CLIENT_URL}/auth" style="display:block; padding:14px 36px; font-size:11px; font-weight:700; letter-spacing:0.22em; text-transform:uppercase; color:#ffffff; text-decoration:none; font-family:Arial,sans-serif;">
+          <a href="${CLIENT_URL}" style="display:block; padding:14px 36px; font-size:11px; font-weight:700; letter-spacing:0.22em; text-transform:uppercase; color:#ffffff; text-decoration:none; font-family:Arial,sans-serif;">
             Go to REBELIVE &rarr;
           </a>
         </td>
