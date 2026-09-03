@@ -37,86 +37,148 @@ export default function MemberCard({
 
   const [shareError, setShareError] = useState<string | null>(null);
 
-  const shareCard = useCallback(async () => {
-    if (!cardFrontRef.current || shareState === "loading") return;
-    setShareState("loading");
-    setShareError(null);
+const shareCard = useCallback(async () => {
+  if (!cardFrontRef.current || shareState === "loading") return;
 
-    try {
-      /**
-       * dom-to-image-more uses SVG foreignObject — the browser renders the
-       * actual DOM natively so all modern CSS (oklab, oklch, color-mix, etc.)
-       * works without any parsing. html2canvas was failing on Tailwind v4's
-       * oklab() color output.
-       */
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const domToImage = (await import("dom-to-image-more")) as any;
+  setShareState("loading");
+  setShareError(null);
 
-      const el = cardFrontRef.current;
-      const { width, height } = el.getBoundingClientRect();
-
-      const blob: Blob = await domToImage.toBlob(el, {
-        width,
-        height,
-        quality: 1,
-        scale: 2,
-        style: {
-          // Ensure the card face is fully visible (not flipped)
-          transform: "none",
-          backfaceVisibility: "visible",
-        },
-      });
-
-      if (!blob) throw new Error("Image export failed");
-
-      const fileName = `rebelive-${persona.id.toLowerCase()}-card.png`;
-      const file = new File([blob], fileName, { type: "image/png" });
-
-      // Try native share sheet (mobile — Instagram, WhatsApp, X status, etc.)
-      let shared = false;
-      if (
-        typeof navigator !== "undefined" &&
-        navigator.canShare &&
-        navigator.canShare({ files: [file] })
-      ) {
-        try {
-          await navigator.share({
-            files: [file],
-            title: `My REBELIVE ${persona.name} Identity`,
-            text: `I'm a ${persona.name} — ${persona.title}. Discover your rebel identity at rebelive.com`,
-          });
-          shared = true;
-        } catch (shareErr: unknown) {
-          if (shareErr instanceof Error && shareErr.name === "AbortError") {
-            // User cancelled the share sheet — just reset
-            setShareState("idle");
-            return;
-          }
-          // Other error — fall through to download
-        }
-      }
-
-      // Desktop fallback: download the PNG
-      if (!shared) {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = fileName;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
-      }
-
-      setShareState("done");
-      setTimeout(() => setShareState("idle"), 2500);
-    } catch (err) {
-      console.error("[ShareCard] Error:", err);
-      setShareError("Could not capture card. Try again.");
-      setShareState("idle");
-      setTimeout(() => setShareError(null), 3000);
+  try {
+    // ── 1. Wait for fonts (critical for Safari) ──
+    if (document.fonts?.ready) {
+      await document.fonts.ready;
     }
-  }, [persona, shareState, isApex, isCapella]);
+
+    const el = cardFrontRef.current;
+    const rect = el.getBoundingClientRect();
+    const width = rect.width;
+    const height = rect.height;
+
+    // ── 2. Deep clone into off-screen container ──
+    // Safari captures the original DOM in its current render state.
+    // A fresh clone avoids any transform residue and gives us a clean target.
+    const clone = el.cloneNode(true) as HTMLElement;
+    const wrapper = document.createElement("div");
+
+    wrapper.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: ${width}px;
+      height: ${height}px;
+      z-index: -9999;
+      pointer-events: none;
+      overflow: hidden;
+      visibility: visible;
+    `;
+
+    // Force the clone to be fully visible (not flipped) and fully rendered
+    clone.style.cssText = `
+      transform: none !important;
+      transform-style: flat !important;
+      backface-visibility: visible !important;
+      -webkit-backface-visibility: visible !important;
+      width: ${width}px !important;
+      height: ${height}px !important;
+      margin: 0 !important;
+      position: relative !important;
+      top: 0 !important;
+      left: 0 !important;
+      opacity: 1 !important;
+      visibility: visible !important;
+      display: block !important;
+    `;
+
+    wrapper.appendChild(clone);
+    document.body.appendChild(wrapper);
+
+    // ── 3. Force Safari to paint the clone ──
+    // Double rAF + small delay ensures WebKit finishes compositing
+    await new Promise((r) => requestAnimationFrame(r));
+    await new Promise((r) => requestAnimationFrame(r));
+    await new Promise((r) => setTimeout(r, 150));
+
+    // ── 4. Capture with dom-to-image-more ──
+    const domToImage = (await import("dom-to-image-more")) as any;
+
+    const blob: Blob = await domToImage.toBlob(clone, {
+      width,
+      height,
+      quality: 1,
+      scale: 2,
+      // If your card has a transparent background and Safari shows it white,
+      // uncomment the next line and set your actual background color:
+      // bgcolor: "#000000",
+    });
+
+    // Cleanup immediately after capture
+    document.body.removeChild(wrapper);
+
+    if (!blob) throw new Error("Image export failed");
+
+    const fileName = `rebelive-${persona.id.toLowerCase()}-card.png`;
+    const file = new File([blob], fileName, { type: "image/png" });
+
+    // ── 5. Share / Download ──
+    let shared = false;
+
+    // Safer feature detection
+    const canShareFiles =
+      typeof navigator !== "undefined" &&
+      "canShare" in navigator &&
+      typeof navigator.canShare === "function";
+
+    if (canShareFiles && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({
+          files: [file],
+          title: `My REBELIVE ${persona.name} Identity`,
+          text: `I'm a ${persona.name} — ${persona.title}. Discover your rebel identity at rebelive.com`,
+        });
+        shared = true;
+      } catch (shareErr: unknown) {
+        if (shareErr instanceof Error && shareErr.name === "AbortError") {
+          setShareState("idle");
+          return;
+        }
+        console.warn("[ShareCard] Share failed, falling back to download:", shareErr);
+      }
+    }
+
+    // ── 6. Fallback download (iOS Safari compatible) ──
+    if (!shared) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      a.style.display = "none";
+      a.rel = "noopener noreferrer";
+      document.body.appendChild(a);
+
+      // iOS Safari needs a dispatched event, not just .click()
+      a.dispatchEvent(
+        new MouseEvent("click", {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+        })
+      );
+
+      document.body.removeChild(a);
+
+      // iOS needs longer before revoking
+      setTimeout(() => URL.revokeObjectURL(url), 3000);
+    }
+
+    setShareState("done");
+    setTimeout(() => setShareState("idle"), 2500);
+  } catch (err) {
+    console.error("[ShareCard] Error:", err);
+    setShareError("Could not capture card. Try again.");
+    setShareState("idle");
+    setTimeout(() => setShareError(null), 3000);
+  }
+}, [persona, shareState]);
 
   return (
     <div className="relative flex flex-col items-center gap-3">
