@@ -23,7 +23,7 @@ export default function SiteFooter({
     <footer
       className={`relative z-20 flex w-full items-center justify-between gap-4 px-4 py-2.5 sm:px-10 border-t ${borderColor} ${textColor} ${className}`}
     >
-      {/* Left — copyright */}
+      {/* Left - copyright */}
       <span
         className="font-mono text-[10px] uppercase tracking-[0.18em] shrink-0 hidden sm:block"
         style={{ fontFamily: MONO }}
@@ -38,7 +38,7 @@ export default function SiteFooter({
         © Oxytrium Dynamics
       </span>
 
-      {/* Centre — tagline */}
+      {/* Centre - tagline */}
       <span
         className="font-mono text-[9px] uppercase tracking-[0.3em] shrink-0 mx-auto"
         style={{ fontFamily: MONO }}
@@ -46,7 +46,7 @@ export default function SiteFooter({
         WAKE · FUEL · REBEL
       </span>
 
-      {/* Right — legal links */}
+      {/* Right - legal links */}
       <div className="flex items-center gap-3 shrink-0">
         <Link
           href="/privacy"

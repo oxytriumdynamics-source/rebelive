@@ -3,9 +3,9 @@
 import { motion } from "framer-motion";
 
 /**
- * EverestPattern — Pure transparent vector outline of Mount Everest & Himalayan ridge.
+ * EverestPattern - Pure transparent vector outline of Mount Everest & Himalayan ridge.
  *
- * - Zero text or captions — pure architectural contour & ridge line art.
+ * - Zero text or captions - pure architectural contour & ridge line art.
  * - 100% transparent vector background.
  * - Full-width bottom coverage: rising from low foothills on the bottom-left
  *   to a massive Everest summit on the upper-right.

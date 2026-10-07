@@ -135,7 +135,7 @@ export default function QuizStage({
 
             {/* Hint */}
             <p className="mt-5 text-center font-mono text-[9px] uppercase tracking-[0.25em] text-ash/50" style={{ fontFamily: MONO }}>
-              Choose fast — instinct only.
+              Choose fast - instinct only.
             </p>
           </motion.div>
         </AnimatePresence>

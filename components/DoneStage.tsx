@@ -96,7 +96,7 @@ export default function DoneStage({
           <span className="font-display text-ink" style={{ fontFamily: "Anton, Arial Narrow, sans-serif" }}>
             {persona.name}
           </span>
-          . Keep an eye on your inbox — this year&rsquo;s completely unpredictable Rebelive
+          . Keep an eye on your inbox - this year&rsquo;s completely unpredictable Rebelive
           benefit is on its way.
         </motion.p>
 

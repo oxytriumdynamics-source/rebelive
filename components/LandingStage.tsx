@@ -57,11 +57,11 @@ export default function LandingStage({
         )}
       </nav>
 
-        {/* ── Main content ── */}
+      {/* ── Main content ── */}
       <div className="relative z-10 flex flex-1 flex-col px-6 pb-3 sm:px-10">
         {/* Giant headline */}
         <div className="flex flex-1 flex-col justify-center gap-0">
-          {/* FIND — filled */}
+          {/* FIND - filled */}
           <motion.h1
             initial={{ opacity: 0, x: -24 }}
             animate={{ opacity: 1, x: 0 }}
@@ -72,7 +72,7 @@ export default function LandingStage({
             FIND
           </motion.h1>
 
-          {/* YOUR — outlined */}
+          {/* YOUR - outlined */}
           <motion.h1
             initial={{ opacity: 0, x: -24 }}
             animate={{ opacity: 1, x: 0 }}
@@ -89,7 +89,7 @@ export default function LandingStage({
             YOUR
           </motion.h1>
 
-          {/* PERSONA. — filled */}
+          {/* PERSONA. - filled */}
           <motion.h1
             initial={{ opacity: 0, x: -24 }}
             animate={{ opacity: 1, x: 0 }}
@@ -108,7 +108,7 @@ export default function LandingStage({
             className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
           >
             <p className="font-mono text-[12px] leading-relaxed text-ash" style={{ fontFamily: MONO }}>
-            .
+              .
             </p>
 
             <button

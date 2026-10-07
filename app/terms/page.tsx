@@ -4,7 +4,7 @@ import Link from "next/link";
 import SiteFooter from "@/components/SiteFooter";
 
 export const metadata: Metadata = {
-  title: "Terms of Service — REBELIVE",
+  title: "Terms of Service - REBELIVE",
   description:
     "Terms and Conditions for rebelive.com, operated by Oxytrium Dynamics Private Limited.",
 };
@@ -33,14 +33,14 @@ export default function TermsPage() {
           style={{ backgroundColor: "rgba(240,239,235,0.9)", backdropFilter: "blur(12px)" }}
         >
           <Link href="/" className="flex items-center gap-3 transition-opacity hover:opacity-70">
-           <NavLogo tone={"light"} width={130} className="sm:!w-[180px]" />
+            <NavLogo tone={"light"} width={130} className="sm:!w-[180px]" />
           </Link>
           <span className="font-mono text-[9px] uppercase tracking-[0.25em] text-black/35" style={{ fontFamily: MONO }}>
             Legal
           </span>
         </nav>
 
-        {/* Hero — centered */}
+        {/* Hero - centered */}
         <div className="border-b border-black/10 px-6 py-14 text-center sm:px-12 sm:py-20">
           <p className="font-mono text-[9px] uppercase tracking-[0.3em] text-black/40 mb-3" style={{ fontFamily: MONO }}>
             Oxytrium Dynamics Private Limited
@@ -167,7 +167,7 @@ function ContactBlock() {
       <p>Email:{" "}<a href="mailto:support@rebelive.com" className="text-black/80 hover:underline normal-case">support@rebelive.com</a></p>
       <p>Oxytrium Dynamics Private Limited</p>
       <p>Ward No.12, Manikpur, Keshopur</p>
-      <p>Buxar, Rajpur, Bihar, India — 802113</p>
+      <p>Buxar, Rajpur, Bihar, India - 802113</p>
     </div>
   );
 }

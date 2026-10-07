@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 
-// deterministic PRNG — avoids hydration mismatches
+// deterministic PRNG - avoids hydration mismatches
 function mulberry32(seed: number) {
   return function () {
     seed |= 0;
@@ -43,7 +43,7 @@ function buildRing(
 }
 
 /**
- * DriftField — light-mode animated topographic contour lines.
+ * DriftField - light-mode animated topographic contour lines.
  * Used on off-white (#f0efeb) backgrounds. Renders near-invisible
  * gray strokes that drift slowly as a motion graphic background.
  */
@@ -109,7 +109,7 @@ export default function DriftField({
         ))}
       </svg>
 
-      {/* Secondary cluster — slower drift opposite direction */}
+      {/* Secondary cluster - slower drift opposite direction */}
       <svg
         viewBox="0 0 100 100"
         preserveAspectRatio="xMidYMid slice"

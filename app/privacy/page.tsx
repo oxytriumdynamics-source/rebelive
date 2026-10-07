@@ -4,7 +4,7 @@ import NavLogo from "@/components/NavLogo";
 import SiteFooter from "@/components/SiteFooter";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy — REBELIVE",
+  title: "Privacy Policy - REBELIVE",
   description:
     "Privacy Policy for rebelive.com, operated by Oxytrium Dynamics Private Limited.",
 };
@@ -33,14 +33,14 @@ export default function PrivacyPage() {
           style={{ backgroundColor: "rgba(240,239,235,0.9)", backdropFilter: "blur(12px)" }}
         >
           <Link href="/" className="flex items-center gap-3 transition-opacity hover:opacity-70">
-             <NavLogo tone={"light"} width={130} className="sm:!w-[180px]" />
+            <NavLogo tone={"light"} width={130} className="sm:!w-[180px]" />
           </Link>
           <span className="font-mono text-[9px] uppercase tracking-[0.25em] text-black/35" style={{ fontFamily: MONO }}>
             Legal
           </span>
         </nav>
 
-        {/* Hero — centered */}
+        {/* Hero - centered */}
         <div className="border-b border-black/10 px-6 py-14 text-center sm:px-12 sm:py-20">
           <p className="font-mono text-[9px] uppercase tracking-[0.3em] text-black/40 mb-3" style={{ fontFamily: MONO }}>
             Oxytrium Dynamics Private Limited
@@ -91,15 +91,15 @@ export default function PrivacyPage() {
 
           <Section title="How We Use Your Personal Information">
             <BulletList items={[
-              "Providing Products and Services — processing payments, fulfilling orders, managing your account, and arranging shipping and returns",
-              "Marketing and Advertising — sending promotional communications and tailoring advertisements. We do not sell personal data for monetary consideration",
-              "Security and Fraud Prevention — detecting and investigating possible fraudulent or malicious activity",
-              "Communicating with You — providing customer support and improving our Services",
+              "Providing Products and Services - processing payments, fulfilling orders, managing your account, and arranging shipping and returns",
+              "Marketing and Advertising - sending promotional communications and tailoring advertisements. We do not sell personal data for monetary consideration",
+              "Security and Fraud Prevention - detecting and investigating possible fraudulent or malicious activity",
+              "Communicating with You - providing customer support and improving our Services",
             ]} />
           </Section>
 
           <Section title="Cookies">
-            <p>We use cookies to power and improve our Site and Services, run analytics, and better understand user interaction. Third-party service providers may also use cookies to tailor services and advertising. Most browsers accept cookies by default — you can disable them in your browser settings, though this may affect Site functionality.</p>
+            <p>We use cookies to power and improve our Site and Services, run analytics, and better understand user interaction. Third-party service providers may also use cookies to tailor services and advertising. Most browsers accept cookies by default - you can disable them in your browser settings, though this may affect Site functionality.</p>
           </Section>
 
           <Section title="How We Disclose Personal Information">
@@ -132,14 +132,14 @@ export default function PrivacyPage() {
           <Section title="Your Rights">
             <p>Depending on where you live, you may have the following rights regarding your personal information:</p>
             <BulletList items={[
-              "Right to Access / Know — request access to personal information we hold about you",
-              "Right to Delete — request deletion of personal information we maintain about you",
-              "Right to Correct — request correction of inaccurate personal information",
-              "Right of Portability — receive a copy of your personal information in a portable format",
-              "Restriction of Processing — ask us to stop or restrict processing of your personal information",
-              "Withdrawal of Consent — withdraw consent where we rely on it to process your data",
-              "Appeal — appeal our decision if we decline to process your request",
-              "Managing Communication Preferences — opt out of promotional emails via the unsubscribe link",
+              "Right to Access / Know - request access to personal information we hold about you",
+              "Right to Delete - request deletion of personal information we maintain about you",
+              "Right to Correct - request correction of inaccurate personal information",
+              "Right of Portability - receive a copy of your personal information in a portable format",
+              "Restriction of Processing - ask us to stop or restrict processing of your personal information",
+              "Withdrawal of Consent - withdraw consent where we rely on it to process your data",
+              "Appeal - appeal our decision if we decline to process your request",
+              "Managing Communication Preferences - opt out of promotional emails via the unsubscribe link",
             ]} />
             <p className="text-[13.5px] text-black/60 pt-1">You may exercise these rights by contacting us at the details below. We will not discriminate against you for exercising your rights.</p>
           </Section>
@@ -161,7 +161,7 @@ export default function PrivacyPage() {
               <p>Email:{" "}<a href="mailto:support@rebelive.com" className="text-black/80 hover:underline normal-case">support@rebelive.com</a></p>
               <p>Oxytrium Dynamics Pvt. Ltd.</p>
               <p>Ward No.12, Manikpur, Keshopur</p>
-              <p>Buxar, Rajpur, Bihar, India — 802113</p>
+              <p>Buxar, Rajpur, Bihar, India - 802113</p>
             </div>
           </Section>
         </div>

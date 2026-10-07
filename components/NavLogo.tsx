@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 /**
- * NavLogo — uses the real REBELIVE brand PNG from /public/brand.
+ * NavLogo - uses the real REBELIVE brand PNG from /public/brand.
  * tone="light" → use on off-white/light backgrounds (shows black logo)
  * tone="dark"  → use on dark backgrounds (inverts to white)
  */

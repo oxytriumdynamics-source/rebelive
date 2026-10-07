@@ -138,7 +138,7 @@ API.interceptors.response.use(
       original.headers.Authorization = `Bearer ${newToken}`;
       return API(original);
     } catch {
-      // Refresh failed (expired / revoked refresh token) — force logout
+      // Refresh failed (expired / revoked refresh token) - force logout
       clearToken();
       refreshQueue.forEach((cb) => cb(null));
       refreshQueue = [];
@@ -249,7 +249,7 @@ export const logoutUser = createAsyncThunk('auth/logout', async (_, { rejectWith
   }
 });
 
-/** Initiate Google OAuth — this just redirects the browser */
+/** Initiate Google OAuth - this just redirects the browser */
 export function googleLogin(): void {
   window.location.href = `${API_BASE}/auth/google`;
 }
@@ -320,7 +320,7 @@ const authSlice = createSlice({
         state.loading = false;
         state.user = payload.user;
         state.emailVerified = payload.emailVerified ?? false;
-        // Keep access token in Redux memory ONLY — do NOT persist to localStorage.
+        // Keep access token in Redux memory ONLY - do NOT persist to localStorage.
         // If the user navigates away before verifying OTP, the home page will NOT
         // find a token and will NOT call getMe(), preventing a bypass of the OTP gate.
         if (payload.accessToken) {
@@ -349,7 +349,7 @@ const authSlice = createSlice({
           state.isAuthenticated = true;
           saveToken(payload.accessToken); // persists across browser closes
         } else {
-          // Not verified — frontend will switch to OTP stage
+          // Not verified - frontend will switch to OTP stage
           state.otpSent = true;
         }
       })
@@ -420,7 +420,7 @@ const authSlice = createSlice({
         state.user = payload;
         state.emailVerified = payload.emailVerified;
         if (payload.emailVerified) {
-          // Fully verified — grant authentication
+          // Fully verified - grant authentication
           state.isAuthenticated = true;
         } else {
           // Account exists but email not yet verified.
@@ -435,7 +435,7 @@ const authSlice = createSlice({
         state.loading = false;
         state.user = null;
         state.isAuthenticated = false;
-        // Don't clear localStorage here — the refresh interceptor will
+        // Don't clear localStorage here - the refresh interceptor will
         // have already attempted a refresh. If it also failed, the token
         // was cleared by the interceptor. If the error was transient
         // (network), we don't want to force logout.

@@ -614,8 +614,8 @@ export default function AuthPageShell() {
           {loading
             ? "PROCESSING…"
             : mode === "signup"
-            ? "CREATE MY REBEL ID"
-            : "SIGN IN"}
+              ? "CREATE MY REBEL ID"
+              : "SIGN IN"}
           {!loading && <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" />}
         </button>
       </form>
@@ -668,7 +668,7 @@ export default function AuthPageShell() {
   return (
     <div className="relative h-[100dvh] w-full flex flex-col md:flex-row overflow-hidden bg-[#f0efeb]">
 
-      {/* LEFT — Form pane */}
+      {/* LEFT - Form pane */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -733,7 +733,7 @@ export default function AuthPageShell() {
         </div>
       </motion.div>
 
-      {/* RIGHT — Dark branded panel */}
+      {/* RIGHT - Dark branded panel */}
       {RightPanel}
     </div>
   );

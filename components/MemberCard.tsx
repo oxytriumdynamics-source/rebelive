@@ -37,30 +37,30 @@ export default function MemberCard({
 
   const [shareError, setShareError] = useState<string | null>(null);
 
-const shareCard = useCallback(async () => {
-  if (!cardFrontRef.current || shareState === "loading") return;
+  const shareCard = useCallback(async () => {
+    if (!cardFrontRef.current || shareState === "loading") return;
 
-  setShareState("loading");
-  setShareError(null);
+    setShareState("loading");
+    setShareError(null);
 
-  try {
-    // ── 1. Wait for fonts (critical for Safari) ──
-    if (document.fonts?.ready) {
-      await document.fonts.ready;
-    }
+    try {
+      // ── 1. Wait for fonts (critical for Safari) ──
+      if (document.fonts?.ready) {
+        await document.fonts.ready;
+      }
 
-    const el = cardFrontRef.current;
-    const rect = el.getBoundingClientRect();
-    const width = rect.width;
-    const height = rect.height;
+      const el = cardFrontRef.current;
+      const rect = el.getBoundingClientRect();
+      const width = rect.width;
+      const height = rect.height;
 
-    // ── 2. Deep clone into off-screen container ──
-    // Safari captures the original DOM in its current render state.
-    // A fresh clone avoids any transform residue and gives us a clean target.
-    const clone = el.cloneNode(true) as HTMLElement;
-    const wrapper = document.createElement("div");
+      // ── 2. Deep clone into off-screen container ──
+      // Safari captures the original DOM in its current render state.
+      // A fresh clone avoids any transform residue and gives us a clean target.
+      const clone = el.cloneNode(true) as HTMLElement;
+      const wrapper = document.createElement("div");
 
-    wrapper.style.cssText = `
+      wrapper.style.cssText = `
       position: fixed;
       top: 0;
       left: 0;
@@ -72,8 +72,8 @@ const shareCard = useCallback(async () => {
       visibility: visible;
     `;
 
-    // Force the clone to be fully visible (not flipped) and fully rendered
-    clone.style.cssText = `
+      // Force the clone to be fully visible (not flipped) and fully rendered
+      clone.style.cssText = `
       transform: none !important;
       transform-style: flat !important;
       backface-visibility: visible !important;
@@ -89,96 +89,96 @@ const shareCard = useCallback(async () => {
       display: block !important;
     `;
 
-    wrapper.appendChild(clone);
-    document.body.appendChild(wrapper);
+      wrapper.appendChild(clone);
+      document.body.appendChild(wrapper);
 
-    // ── 3. Force Safari to paint the clone ──
-    // Double rAF + small delay ensures WebKit finishes compositing
-    await new Promise((r) => requestAnimationFrame(r));
-    await new Promise((r) => requestAnimationFrame(r));
-    await new Promise((r) => setTimeout(r, 150));
+      // ── 3. Force Safari to paint the clone ──
+      // Double rAF + small delay ensures WebKit finishes compositing
+      await new Promise((r) => requestAnimationFrame(r));
+      await new Promise((r) => requestAnimationFrame(r));
+      await new Promise((r) => setTimeout(r, 150));
 
-    // ── 4. Capture with dom-to-image-more ──
-    const domToImage = (await import("dom-to-image-more")) as any;
+      // ── 4. Capture with dom-to-image-more ──
+      const domToImage = (await import("dom-to-image-more")) as any;
 
-    const blob: Blob = await domToImage.toBlob(clone, {
-      width,
-      height,
-      quality: 1,
-      scale: 2,
-      // If your card has a transparent background and Safari shows it white,
-      // uncomment the next line and set your actual background color:
-      // bgcolor: "#000000",
-    });
+      const blob: Blob = await domToImage.toBlob(clone, {
+        width,
+        height,
+        quality: 1,
+        scale: 2,
+        // If your card has a transparent background and Safari shows it white,
+        // uncomment the next line and set your actual background color:
+        // bgcolor: "#000000",
+      });
 
-    // Cleanup immediately after capture
-    document.body.removeChild(wrapper);
+      // Cleanup immediately after capture
+      document.body.removeChild(wrapper);
 
-    if (!blob) throw new Error("Image export failed");
+      if (!blob) throw new Error("Image export failed");
 
-    const fileName = `rebelive-${persona.id.toLowerCase()}-card.png`;
-    const file = new File([blob], fileName, { type: "image/png" });
+      const fileName = `rebelive-${persona.id.toLowerCase()}-card.png`;
+      const file = new File([blob], fileName, { type: "image/png" });
 
-    // ── 5. Share / Download ──
-    let shared = false;
+      // ── 5. Share / Download ──
+      let shared = false;
 
-    // Safer feature detection
-    const canShareFiles =
-      typeof navigator !== "undefined" &&
-      "canShare" in navigator &&
-      typeof navigator.canShare === "function";
+      // Safer feature detection
+      const canShareFiles =
+        typeof navigator !== "undefined" &&
+        "canShare" in navigator &&
+        typeof navigator.canShare === "function";
 
-    if (canShareFiles && navigator.canShare({ files: [file] })) {
-      try {
-        await navigator.share({
-          files: [file],
-          title: `My REBELIVE ${persona.name} Identity`,
-          text: `I'm a ${persona.name} — ${persona.title}. Discover your rebel identity at rebelive.com`,
-        });
-        shared = true;
-      } catch (shareErr: unknown) {
-        if (shareErr instanceof Error && shareErr.name === "AbortError") {
-          setShareState("idle");
-          return;
+      if (canShareFiles && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: `My REBELIVE ${persona.name} Identity`,
+            text: `I'm a ${persona.name} - ${persona.title}. Discover your rebel identity at rebelive.com`,
+          });
+          shared = true;
+        } catch (shareErr: unknown) {
+          if (shareErr instanceof Error && shareErr.name === "AbortError") {
+            setShareState("idle");
+            return;
+          }
+          console.warn("[ShareCard] Share failed, falling back to download:", shareErr);
         }
-        console.warn("[ShareCard] Share failed, falling back to download:", shareErr);
       }
+
+      // ── 6. Fallback download (iOS Safari compatible) ──
+      if (!shared) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = fileName;
+        a.style.display = "none";
+        a.rel = "noopener noreferrer";
+        document.body.appendChild(a);
+
+        // iOS Safari needs a dispatched event, not just .click()
+        a.dispatchEvent(
+          new MouseEvent("click", {
+            bubbles: true,
+            cancelable: true,
+            view: window,
+          })
+        );
+
+        document.body.removeChild(a);
+
+        // iOS needs longer before revoking
+        setTimeout(() => URL.revokeObjectURL(url), 3000);
+      }
+
+      setShareState("done");
+      setTimeout(() => setShareState("idle"), 2500);
+    } catch (err) {
+      console.error("[ShareCard] Error:", err);
+      setShareError("Could not capture card. Try again.");
+      setShareState("idle");
+      setTimeout(() => setShareError(null), 3000);
     }
-
-    // ── 6. Fallback download (iOS Safari compatible) ──
-    if (!shared) {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = fileName;
-      a.style.display = "none";
-      a.rel = "noopener noreferrer";
-      document.body.appendChild(a);
-
-      // iOS Safari needs a dispatched event, not just .click()
-      a.dispatchEvent(
-        new MouseEvent("click", {
-          bubbles: true,
-          cancelable: true,
-          view: window,
-        })
-      );
-
-      document.body.removeChild(a);
-
-      // iOS needs longer before revoking
-      setTimeout(() => URL.revokeObjectURL(url), 3000);
-    }
-
-    setShareState("done");
-    setTimeout(() => setShareState("idle"), 2500);
-  } catch (err) {
-    console.error("[ShareCard] Error:", err);
-    setShareError("Could not capture card. Try again.");
-    setShareState("idle");
-    setTimeout(() => setShareError(null), 3000);
-  }
-}, [persona, shareState]);
+  }, [persona, shareState]);
 
   return (
     <div className="relative flex flex-col items-center gap-3">
@@ -650,7 +650,7 @@ const shareCard = useCallback(async () => {
         </motion.div>
       </div>
 
-      {/* Sub-card actions row — only shown on profile, not result */}
+      {/* Sub-card actions row - only shown on profile, not result */}
       {showActions && (
         <>
           <div className="flex items-center gap-4">

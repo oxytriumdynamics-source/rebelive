@@ -12,7 +12,7 @@ interface Dot {
 }
 
 /**
- * HalftoneField — continuous fluid square-dot mesh.
+ * HalftoneField - continuous fluid square-dot mesh.
  * 
  * - Continuous liquid motion: Multi-octave harmonic fluid simulation continuously flows
  *   with subtle organic displacement and breathing dot scale.

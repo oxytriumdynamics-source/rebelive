@@ -85,7 +85,7 @@ function AuthCallbackInner() {
 }
 
 /**
- * /auth/callback — Handles Google OAuth redirect.
+ * /auth/callback - Handles Google OAuth redirect.
  * Backend redirects here with ?token=<accessToken> after successful OAuth.
  *
  * Suspense boundary is required because useSearchParams() cannot be used

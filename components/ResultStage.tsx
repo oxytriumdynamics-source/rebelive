@@ -37,11 +37,11 @@ export default function ResultStage({
 
   async function handleClaim() {
     if (isAuthenticated) {
-      // Already logged in — claim immediately
+      // Already logged in - claim immediately
       await dispatch(claimPersona(result.winner.toLowerCase()));
       router.push("/");
     } else {
-      // Guest — save persona, send to signup
+      // Guest - save persona, send to signup
       if (typeof window !== 'undefined') {
         sessionStorage.setItem('pendingPersona', result.winner.toLowerCase());
       }
@@ -53,20 +53,20 @@ export default function ResultStage({
   const bgStyle = isApex
     ? "#090909"
     : isCapella
-    ? "#ffffff"
-    : "#ffffff";
+      ? "#ffffff"
+      : "#ffffff";
 
   const patternStroke = isApex
     ? "#ffffff"
     : isCapella
-    ? "#c8922a"
-    : "#e8628a";
+      ? "#c8922a"
+      : "#e8628a";
 
   const halftoneRgb = isApex
     ? "255, 255, 255"
     : isCapella
-    ? "200, 146, 42"
-    : "232, 98, 138";
+      ? "200, 146, 42"
+      : "232, 98, 138";
 
   const patternOpacity = isApex ? 0.32 : isCapella ? 0.38 : 0.38;
 
@@ -94,31 +94,28 @@ export default function ResultStage({
         <NavLogo tone={isApex ? "dark" : "light"} width={180} />
 
         <div
-          className={`flex items-center gap-2 rounded-full px-3 py-1 backdrop-blur-md ${
-            isApex
+          className={`flex items-center gap-2 rounded-full px-3 py-1 backdrop-blur-md ${isApex
               ? "border border-white/15 bg-white/[0.06]"
               : isCapella
-              ? "border border-amber-500/20 bg-amber-500/[0.06]"
-              : "border border-rose-400/20 bg-rose-500/[0.06]"
-          }`}
+                ? "border border-amber-500/20 bg-amber-500/[0.06]"
+                : "border border-rose-400/20 bg-rose-500/[0.06]"
+            }`}
         >
           <span
-            className={`h-1.5 w-1.5 rounded-full animate-pulse ${
-              isApex
+            className={`h-1.5 w-1.5 rounded-full animate-pulse ${isApex
                 ? "bg-emerald-400"
                 : isCapella
-                ? "bg-amber-500 shadow-[0_0_6px_#f59e0b]"
-                : "bg-rose-500 shadow-[0_0_6px_#f43f5e]"
-            }`}
+                  ? "bg-amber-500 shadow-[0_0_6px_#f59e0b]"
+                  : "bg-rose-500 shadow-[0_0_6px_#f43f5e]"
+              }`}
           />
           <span
-            className={`font-mono text-[10.5px] uppercase tracking-[0.2em] font-semibold ${
-              isApex
+            className={`font-mono text-[10.5px] uppercase tracking-[0.2em] font-semibold ${isApex
                 ? "text-white"
                 : isCapella
-                ? "text-[#92620e]"
-                : "text-[#be185d]"
-            }`}
+                  ? "text-[#92620e]"
+                  : "text-[#be185d]"
+              }`}
             style={{ fontFamily: MONO }}
           >
             REBEL ID ISSUED
@@ -147,13 +144,12 @@ export default function ResultStage({
             >
               <button
                 onClick={handleClaim}
-                className={`group flex items-center gap-3 px-7 py-3.5 font-mono text-[11px] uppercase tracking-[0.2em] transition-all duration-200 active:scale-[0.98] ${
-                  isApex
+                className={`group flex items-center gap-3 px-7 py-3.5 font-mono text-[11px] uppercase tracking-[0.2em] transition-all duration-200 active:scale-[0.98] ${isApex
                     ? "bg-white text-black hover:bg-white/90 shadow-[0_10px_30px_rgba(255,255,255,0.15)]"
                     : isCapella
-                    ? "bg-[#111110] text-white hover:bg-black/85 shadow-lg"
-                    : "bg-[#111110] text-white hover:bg-black/85 shadow-lg"
-                }`}
+                      ? "bg-[#111110] text-white hover:bg-black/85 shadow-lg"
+                      : "bg-[#111110] text-white hover:bg-black/85 shadow-lg"
+                  }`}
                 style={{ fontFamily: MONO }}
               >
                 {isAuthenticated ? "SAVE MY CHARACTER" : "CLAIM YOUR REWARD"}

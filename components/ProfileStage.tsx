@@ -87,7 +87,7 @@ export default function ProfileStage({
         <NavLogo tone={isApex ? "dark" : "light"} width={130} className="sm:!w-[180px]" />
 
         <div className="flex items-center gap-2 sm:gap-3">
-          {/* Identity badge — full on sm+, dot-only on xs */}
+          {/* Identity badge - full on sm+, dot-only on xs */}
           <div
             className={`flex items-center gap-2 rounded-full px-2.5 py-1.5 border backdrop-blur-md ${borderColor}`}
             style={{ backgroundColor: isApex ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)" }}
@@ -104,7 +104,7 @@ export default function ProfileStage({
             </span>
           </div>
 
-          {/* Logout — icon+text on sm+, icon-only on xs */}
+          {/* Logout - icon+text on sm+, icon-only on xs */}
           <button
             id="logout-btn"
             onClick={handleLogout}
@@ -166,7 +166,7 @@ export default function ProfileStage({
                     className={`mt-2 font-mono text-[10px] leading-relaxed ${textSub}`}
                     style={{ fontFamily: MONO, maxWidth: "18rem" }}
                   >
-                    Take the quiz to discover your rebel identity — APEX, CAPELLA, or AVIVA.
+                    Take the quiz to discover your rebel identity - APEX, CAPELLA, or AVIVA.
                   </p>
                 </div>
                 <button
@@ -294,7 +294,7 @@ export default function ProfileStage({
                     className={`font-display text-xl leading-tight font-bold ${textPrimary} mb-2`}
                     style={{ fontFamily: DISPLAY, fontWeight: 700, letterSpacing: "-0.02em" }}
                   >
-                    {persona.name} — {persona.title}
+                    {persona.name} - {persona.title}
                   </h2>
                   <p
                     className={`font-sans text-[12px] leading-relaxed ${textSub}`}
@@ -321,7 +321,7 @@ export default function ProfileStage({
                     ))}
                   </div>
 
-                 
+
                 </motion.div>
               )}
             </AnimatePresence>
@@ -342,16 +342,16 @@ export default function ProfileStage({
               <div className="flex items-center gap-2">
                 {/* Instagram */}
                 <a
-                  href="https://www.instagram.com/rebelive.official"
+                  href="https://www.instagram.com/rebelive.official?stkn=aTMyZWJ1N2lqZmht"
                   target="_blank"
                   rel="noopener noreferrer"
                   className={`group flex items-center gap-2 flex-1 rounded-lg border px-3 py-2.5 transition-all hover:scale-[1.02] active:scale-[0.98] ${borderColor}`}
                   style={{ backgroundColor: isApex ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)" }}
                 >
                   <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: accentColor }}>
-                    <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
-                    <circle cx="12" cy="12" r="4"/>
-                    <circle cx="17.5" cy="6.5" r="0.5" fill="currentColor" stroke="none"/>
+                    <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
+                    <circle cx="12" cy="12" r="4" />
+                    <circle cx="17.5" cy="6.5" r="0.5" fill="currentColor" stroke="none" />
                   </svg>
                   <span className={`font-mono text-[8.5px] uppercase tracking-[0.15em] ${textSub}`} style={{ fontFamily: MONO }}>
                     Instagram
@@ -367,9 +367,9 @@ export default function ProfileStage({
                   style={{ backgroundColor: isApex ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)" }}
                 >
                   <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="currentColor" style={{ color: accentColor }}>
-                    <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/>
-                    <rect x="2" y="9" width="4" height="12"/>
-                    <circle cx="4" cy="4" r="2"/>
+                    <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z" />
+                    <rect x="2" y="9" width="4" height="12" />
+                    <circle cx="4" cy="4" r="2" />
                   </svg>
                   <span className={`font-mono text-[8.5px] uppercase tracking-[0.15em] ${textSub}`} style={{ fontFamily: MONO }}>
                     LinkedIn
@@ -378,14 +378,14 @@ export default function ProfileStage({
 
                 {/* Facebook */}
                 <a
-                  href="https://facebook.com/rebelive.official"
+                  href="https://www.facebook.com/share/1cjZ7Lqgbe/?mibextid=wwXIfr"
                   target="_blank"
                   rel="noopener noreferrer"
                   className={`group flex items-center gap-2 flex-1 rounded-lg border px-3 py-2.5 transition-all hover:scale-[1.02] active:scale-[0.98] ${borderColor}`}
                   style={{ backgroundColor: isApex ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)" }}
                 >
                   <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="currentColor" style={{ color: accentColor }}>
-                    <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/>
+                    <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
                   </svg>
                   <span className={`font-mono text-[8.5px] uppercase tracking-[0.15em] ${textSub}`} style={{ fontFamily: MONO }}>
                     Facebook
