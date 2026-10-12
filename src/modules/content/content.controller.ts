@@ -48,3 +48,14 @@ export async function unsubscribeNewsletter(req: Request, res: Response, next: N
     res.json({ status: 'success', message: 'Unsubscribed successfully' });
   } catch (err) { next(err); }
 }
+
+// GET /api/v1/content/testimonials
+export async function getTestimonials(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const testimonials = await prisma.testimonial.findMany({
+      where: { isFeatured: true },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
+    });
+    res.json({ status: 'success', data: testimonials });
+  } catch (err) { next(err); }
+}

@@ -1146,3 +1146,147 @@ export async function createQuizQuestion(req: Request, res: Response, next: Next
     next(err);
   }
 }
+
+// ─── TESTIMONIALS MANAGEMENT ───────────────────────────
+
+const DEFAULT_TESTIMONIALS = [
+  {
+    name: 'NISHANT MISHRA',
+    role: 'Software Architect & Biohacker',
+    quote: 'Clean sustained mental clarity through long coding sessions without any crash or anxiety. Rebelive is literally in a class of its own.',
+    rating: 5,
+    image: '/testimonials/rebel-nishant.webp',
+    imagePosition: 'center 15%',
+    isFeatured: true,
+    sortOrder: 1,
+  },
+  {
+    name: 'ASHRAY VASU',
+    role: 'Product Designer',
+    quote: 'The calm focus and zero-sugar formulation completely upgraded my workday routine. No jitters, pure natural flow state.',
+    rating: 5,
+    image: '/testimonials/rebel-ashray.webp',
+    imagePosition: 'center 15%',
+    isFeatured: true,
+    sortOrder: 2,
+  },
+  {
+    name: 'VAIBHAV MITTAL',
+    role: 'Founder & Endurance Athlete',
+    quote: 'Unmatched sustained energy that keeps me dialed in and sharp throughout the day. Zero sugar crash, just pure cognitive momentum.',
+    rating: 5,
+    image: '/testimonials/rebel-vaibhav.webp',
+    imagePosition: 'center 18%',
+    isFeatured: true,
+    sortOrder: 3,
+  },
+  {
+    name: 'DHIRENDRA SINGH KAUSHIK',
+    role: 'Creative Director',
+    quote: 'Game-changing endurance and crisp mental sharpness. Zero jitters, no crash, just pure sustained high performance all day long.',
+    rating: 5,
+    image: '/testimonials/rebel-dhirendra.webp',
+    imagePosition: 'center 20%',
+    isFeatured: true,
+    sortOrder: 4,
+  },
+];
+
+// GET /api/v1/admin/testimonials
+export async function getTestimonials(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    let list = await prisma.testimonial.findMany({
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
+    });
+
+    if (list.length === 0) {
+      for (const t of DEFAULT_TESTIMONIALS) {
+        await prisma.testimonial.create({ data: t });
+      }
+      list = await prisma.testimonial.findMany({
+        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
+      });
+    }
+
+    res.json({ status: 'success', data: list });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// GET /api/v1/admin/testimonials/:id
+export async function getTestimonial(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = paramStr(req);
+    const item = await prisma.testimonial.findUnique({ where: { id } });
+    if (!item) throw new NotFoundError('Testimonial');
+    res.json({ status: 'success', data: item });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /api/v1/admin/testimonials
+export async function createTestimonial(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { name, role, quote, rating, image, imagePosition, isFeatured, sortOrder } = req.body;
+    if (!name || !quote) {
+      throw new ValidationError('Name and quote are required');
+    }
+
+    const created = await prisma.testimonial.create({
+      data: {
+        name: name.trim(),
+        role: role ? role.trim() : null,
+        quote: quote.trim(),
+        rating: Number(rating) || 5,
+        image: image || '/testimonials/rebel-nishant.webp',
+        imagePosition: imagePosition || 'center 15%',
+        isFeatured: isFeatured !== undefined ? Boolean(isFeatured) : true,
+        sortOrder: Number(sortOrder) || 0,
+      },
+    });
+
+    res.status(201).json({ status: 'success', data: created });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// PATCH /api/v1/admin/testimonials/:id
+export async function updateTestimonial(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = paramStr(req);
+    const { name, role, quote, rating, image, imagePosition, isFeatured, sortOrder } = req.body;
+
+    const data: any = {};
+    if (name !== undefined) data.name = name.trim();
+    if (role !== undefined) data.role = role ? role.trim() : null;
+    if (quote !== undefined) data.quote = quote.trim();
+    if (rating !== undefined) data.rating = Number(rating);
+    if (image !== undefined) data.image = image;
+    if (imagePosition !== undefined) data.imagePosition = imagePosition;
+    if (isFeatured !== undefined) data.isFeatured = Boolean(isFeatured);
+    if (sortOrder !== undefined) data.sortOrder = Number(sortOrder);
+
+    const updated = await prisma.testimonial.update({
+      where: { id },
+      data,
+    });
+
+    res.json({ status: 'success', data: updated });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// DELETE /api/v1/admin/testimonials/:id
+export async function deleteTestimonial(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = paramStr(req);
+    await prisma.testimonial.delete({ where: { id } });
+    res.json({ status: 'success', message: 'Testimonial deleted successfully' });
+  } catch (err) {
+    next(err);
+  }
+}

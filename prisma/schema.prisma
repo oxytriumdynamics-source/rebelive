@@ -739,3 +739,21 @@ model NewsletterSubscriber {
 
   @@map("newsletter_subscribers")
 }
+
+// ─── TESTIMONIALS ──────────────────────────────────────
+
+model Testimonial {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  name          String
+  role          String?
+  quote         String
+  rating        Int      @default(5)
+  image         String
+  imagePosition String?  @map("image_position")
+  isFeatured    Boolean  @default(true) @map("is_featured")
+  sortOrder     Int      @default(0) @map("sort_order")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("testimonials")
+}

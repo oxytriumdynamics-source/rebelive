@@ -71,6 +71,14 @@ export async function uploadToCloudinary(
     };
   }
 
+  const defaultTransformation = folder.includes('testimonials')
+    ? [
+        { width: 1000, height: 1000, crop: 'limit', quality: 'auto:good', fetch_format: 'auto' },
+      ]
+    : [
+        { width: 1600, height: 1600, crop: 'limit', quality: 'auto:good', fetch_format: 'auto' },
+      ];
+
   // Upload Buffer via upload_stream
   if (Buffer.isBuffer(fileSource)) {
     return new Promise((resolve, reject) => {
@@ -79,9 +87,7 @@ export async function uploadToCloudinary(
           folder,
           public_id: options?.publicId,
           resource_type: 'image',
-          transformation: options?.transformation || [
-            { quality: 'auto:best', fetch_format: 'auto' },
-          ],
+          transformation: options?.transformation || defaultTransformation,
         },
         (error, result) => {
           if (error || !result) {
@@ -107,9 +113,7 @@ export async function uploadToCloudinary(
     folder,
     public_id: options?.publicId,
     resource_type: 'image',
-    transformation: options?.transformation || [
-      { quality: 'auto:best', fetch_format: 'auto' },
-    ],
+    transformation: options?.transformation || defaultTransformation,
   });
 
   return {

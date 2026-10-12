@@ -69,4 +69,11 @@ router.get('/audit-logs', requireSuperAdmin, adminController.getAuditLogs);
 router.post('/personality-types', adminController.createPersonalityType);
 router.post('/quiz/questions', adminController.createQuizQuestion);
 
+// ─── Testimonials Management ──────────────────────────
+router.get('/testimonials', adminController.getTestimonials);
+router.get('/testimonials/:id', adminController.getTestimonial);
+router.post('/testimonials', adminController.createTestimonial);
+router.patch('/testimonials/:id', adminController.updateTestimonial);
+router.delete('/testimonials/:id', adminController.deleteTestimonial);
+
 export default router;
