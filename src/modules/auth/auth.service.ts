@@ -91,7 +91,7 @@ export async function registerUser(
 
   logger.info(`[Auth] User registered: ${user.email}`);
 
-  // Welcome email is deferred — sent only after email is verified (see verifyOtp)
+  // Welcome email is deferred - sent only after email is verified (see verifyOtp)
 
   // Send OTP immediately after registration
   await sendOtp({ email: user.email });
@@ -194,7 +194,7 @@ export async function sendOtp(input: SendOtpInput): Promise<void> {
   // Generate numeric OTP
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
-  // Hash OTP before storing (SHA-256 — lightweight, no salt needed for short-lived codes)
+  // Hash OTP before storing (SHA-256 - lightweight, no salt needed for short-lived codes)
   const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
   const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
@@ -256,7 +256,7 @@ export async function verifyOtp(
   // Now that email is confirmed, send the welcome mail (non-blocking)
   sendMail({
     to: verified.email,
-    subject: 'Welcome to REBELIVE — Your Rebel ID is live 🔥',
+    subject: 'Welcome to REBELIVE - Your Rebel ID is live 🔥',
     html: greetingEmailHtml({
       firstName: verified.firstName,
       persona: preference?.personalityType ?? null,

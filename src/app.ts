@@ -21,6 +21,7 @@ import subscriptionsRoutes from './modules/subscriptions/subscriptions.routes';
 import supportRoutes from './modules/support/support.routes';
 import contentRoutes from './modules/content/content.routes';
 import adminRoutes from './modules/admin/admin.routes';
+import shippingRoutes from './modules/shipping/shipping.routes';
 
 const app = express();
 
@@ -77,6 +78,7 @@ app.use(`${API}/subscriptions`, subscriptionsRoutes);
 app.use(`${API}/support`, supportRoutes);
 app.use(`${API}/content`, contentRoutes);
 app.use(`${API}/admin`, adminRoutes);
+app.use(`${API}/shipping`, shippingRoutes);
 
 // ─── 404 Handler ──────────────────────────────────────
 app.use((_req, res) => {

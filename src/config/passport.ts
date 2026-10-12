@@ -93,14 +93,14 @@ passport.use(
           });
           logger.info(`[Auth] New Google user created: ${email}`);
 
-          // First-time Google signup — send welcome mail (non-blocking)
+          // First-time Google signup - send welcome mail (non-blocking)
           sendMail({
             to: user.email,
-            subject: 'Welcome to REBELIVE — Your Rebel ID is live 🔥',
+            subject: 'Welcome to REBELIVE - Your Rebel ID is live 🔥',
             html: greetingEmailHtml({ firstName: user.firstName, persona: null }),
           });
         } else if (!user.googleId) {
-          // Existing local user — link Google account
+          // Existing local user - link Google account
           user = await prisma.user.update({
             where: { id: user.id },
             data: {

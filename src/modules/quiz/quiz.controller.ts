@@ -85,7 +85,7 @@ export async function getPersonalityTypes(req: Request, res: Response, next: Nex
   } catch (err) { next(err); }
 }
 
-// POST /api/v1/quiz/claim-persona  (protected — requires auth)
+// POST /api/v1/quiz/claim-persona  (protected - requires auth)
 export async function claimPersona(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const userId = req.user?.id;

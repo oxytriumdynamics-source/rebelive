@@ -44,28 +44,44 @@ export async function getProducts(req: Request, res: Response, next: NextFunctio
         where,
         skip,
         take,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: 'asc' },
         include: {
-          images: { where: { isPrimary: true }, take: 1 },
-          variants: { where: { isDefault: true }, take: 1 },
+          images: { orderBy: { sortOrder: 'asc' } },
+          variants: { where: { isActive: true }, orderBy: { price: 'asc' } },
           category: { select: { name: true, slug: true } },
+          personalityType: true,
         },
       }),
       prisma.product.count({ where }),
     ]);
 
-    res.json({ status: 'success', ...buildPaginationResult(data, total, page, limit) });
+    // Format products so id maps to slug while preserving MongoDB objectId as dbId
+    const formattedData = data.map((p) => ({
+      ...p,
+      id: p.slug,
+      dbId: p.id,
+    }));
+
+    res.json({ status: 'success', ...buildPaginationResult(formattedData, total, page, limit) });
   } catch (err) { next(err); }
 }
 
 // GET /api/v1/products/:slug
 export async function getProduct(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const product = await prisma.product.findUnique({
-      where: { slug: paramStr(req, 'slug') },
+    const slugOrId = paramStr(req, 'slug');
+    const isObjectId = /^[0-9a-fA-F]{24}$/.test(slugOrId);
+
+    const product = await prisma.product.findFirst({
+      where: {
+        OR: [
+          { slug: slugOrId.toLowerCase() },
+          ...(isObjectId ? [{ id: slugOrId }] : []),
+        ],
+      },
       include: {
         images: { orderBy: { sortOrder: 'asc' } },
-        variants: { where: { isActive: true } },
+        variants: { where: { isActive: true }, orderBy: { price: 'asc' } },
         category: true,
         personalityType: true,
         reviews: {
@@ -77,7 +93,14 @@ export async function getProduct(req: Request, res: Response, next: NextFunction
       },
     });
     if (!product || !product.isActive) throw new NotFoundError('Product');
-    res.json({ status: 'success', data: product });
+
+    const formattedProduct = {
+      ...product,
+      id: product.slug,
+      dbId: product.id,
+    };
+
+    res.json({ status: 'success', data: formattedProduct });
   } catch (err) { next(err); }
 }
 

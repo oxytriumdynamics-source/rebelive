@@ -12,10 +12,14 @@ export async function getProfile(req: Request, res: Response, next: NextFunction
   try {
     const user = await prisma.user.findUnique({
       where: { id: userId(req) },
-      include: { preferences: true },
+      include: {
+        preferences: {
+          include: { personalityType: true },
+        },
+      },
     });
     if (!user) throw new NotFoundError('User');
-    const { passwordHash, refreshTokens, googleId, ...safe } = user;
+    const { passwordHash, refreshTokens, googleId, otpCode, otpExpiry, ...safe } = user as any;
     res.json({ status: 'success', data: safe });
   } catch (err) { next(err); }
 }
@@ -24,11 +28,22 @@ export async function getProfile(req: Request, res: Response, next: NextFunction
 export async function updateProfile(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const { firstName, lastName, phone, avatarUrl } = req.body as Record<string, string>;
+    const updateData: Record<string, string> = {};
+    if (firstName !== undefined) updateData.firstName = firstName;
+    if (lastName !== undefined) updateData.lastName = lastName;
+    if (phone !== undefined) updateData.phone = phone;
+    if (avatarUrl !== undefined) updateData.avatarUrl = avatarUrl;
+
     const user = await prisma.user.update({
       where: { id: userId(req) },
-      data: { firstName, lastName, phone, avatarUrl },
+      data: updateData,
+      include: {
+        preferences: {
+          include: { personalityType: true },
+        },
+      },
     });
-    const { passwordHash, refreshTokens, googleId, ...safe } = user;
+    const { passwordHash, refreshTokens, googleId, otpCode, otpExpiry, ...safe } = user as any;
     res.json({ status: 'success', data: safe });
   } catch (err) { next(err); }
 }
@@ -46,7 +61,10 @@ export async function changePassword(req: Request, res: Response, next: NextFunc
 // GET /api/v1/users/addresses
 export async function getAddresses(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const addresses = await prisma.address.findMany({ where: { userId: userId(req) } });
+    const addresses = await prisma.address.findMany({
+      where: { userId: userId(req) },
+      orderBy: { isDefault: 'desc' },
+    });
     res.json({ status: 'success', data: addresses });
   } catch (err) { next(err); }
 }
@@ -61,9 +79,9 @@ export async function createAddress(req: Request, res: Response, next: NextFunct
     const address = await prisma.address.create({
       data: {
         userId: userId(req),
-        label: label as string | undefined,
+        label: (label as string) || undefined,
         line1: line1 as string,
-        line2: line2 as string | undefined,
+        line2: (line2 as string) || undefined,
         city: city as string,
         state: state as string,
         postalCode: postalCode as string,
@@ -82,9 +100,10 @@ export async function updateAddress(req: Request, res: Response, next: NextFunct
     if (req.body.isDefault) {
       await prisma.address.updateMany({ where: { userId: userId(req) }, data: { isDefault: false } });
     }
+    const { id: _ignoreId, userId: _ignoreUserId, ...safeUpdate } = req.body as Record<string, unknown>;
     const address = await prisma.address.update({
       where: { id, userId: userId(req) },
-      data: req.body as Record<string, unknown>,
+      data: safeUpdate,
     });
     res.json({ status: 'success', data: address });
   } catch (err) { next(err); }

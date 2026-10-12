@@ -5,8 +5,8 @@
 const CLIENT_URL = process.env.CLIENT_URL ?? 'http://localhost:3000';
 
 // Logo images hosted on the frontend's /public/brand/ folder
-const LOGO_WHITE   = `${CLIENT_URL}/brand/rebelive-white.png`;  // white wordmark (for dark bg)
-const LOGO_BLACK   = `${CLIENT_URL}/brand/REBELIVE Logo Black.png`;  // black wordmark (for white sections)
+const LOGO_WHITE = `${CLIENT_URL}/brand/rebelive-white.png`;  // white wordmark (for dark bg)
+const LOGO_BLACK = `${CLIENT_URL}/brand/REBELIVE Logo Black.png`;  // black wordmark (for white sections)
 const PANTHER_ICON = `${CLIENT_URL}/brand/panther_white_icon-transparent.png`; // mascot seal
 
 // ─── Base wrapper ──────────────────────────────────────
@@ -122,11 +122,11 @@ function baseWrapper(content: string): string {
 
 const S = {
   eyebrow: 'margin:0 0 8px; font-size:10px; letter-spacing:0.28em; text-transform:uppercase; color:#888888; font-family:Arial,sans-serif;',
-  h1:      'margin:0 0 18px; font-size:26px; font-weight:700; color:#0a0a0a; letter-spacing:-0.02em; line-height:1.2; font-family:Arial,Helvetica,sans-serif;',
-  body:    'margin:0 0 24px; font-size:14px; line-height:1.75; color:#444444; font-family:Arial,sans-serif;',
-  strong:  'color:#0a0a0a;',
-  rule:    'border:none; border-top:1px solid #e8e8e8; margin:28px 0;',
-  note:    'margin:0; font-size:11px; color:#bbbbbb; text-align:center; font-family:Arial,sans-serif; letter-spacing:0.06em;',
+  h1: 'margin:0 0 18px; font-size:26px; font-weight:700; color:#0a0a0a; letter-spacing:-0.02em; line-height:1.2; font-family:Arial,Helvetica,sans-serif;',
+  body: 'margin:0 0 24px; font-size:14px; line-height:1.75; color:#444444; font-family:Arial,sans-serif;',
+  strong: 'color:#0a0a0a;',
+  rule: 'border:none; border-top:1px solid #e8e8e8; margin:28px 0;',
+  note: 'margin:0; font-size:11px; color:#bbbbbb; text-align:center; font-family:Arial,sans-serif; letter-spacing:0.06em;',
 };
 
 // ─── OTP Email ─────────────────────────────────────────
@@ -167,7 +167,7 @@ export function greetingEmailHtml(opts: {
 }): string {
   const { firstName, persona } = opts;
 
-  // Persona reveal block — shown only when a persona is assigned
+  // Persona reveal block - shown only when a persona is assigned
   const personaBlock = persona
     ? `
     <!-- Persona reveal -->
@@ -185,7 +185,7 @@ export function greetingEmailHtml(opts: {
       </tr>
     </table>`
     : `
-    <!-- No persona yet — invite to take the quiz -->
+    <!-- No persona yet - invite to take the quiz -->
     <table cellpadding="0" cellspacing="0" style="margin:0 0 28px; width:100%; border-left:3px solid #0a0a0a;">
       <tr>
         <td style="padding:14px 18px; background:#f8f8f8;">

@@ -27,7 +27,7 @@ export async function connectRedis(): Promise<void> {
   try {
     await getRedis().connect();
   } catch (err) {
-    // Redis is optional — log but don't crash
+    // Redis is optional - log but don't crash
     console.warn('⚠️  [Redis] Could not connect (running without Redis cache):', err);
   }
 }

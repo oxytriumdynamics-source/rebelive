@@ -32,6 +32,24 @@ const envSchema = z.object({
   MAIL_REDIRECT_URI: z.string().default('https://developers.google.com/oauthplayground'),
   MAIL_FROM_EMAIL: z.string().email().default('noreply@rebelive.co'),
   MAIL_FROM_NAME: z.string().default('REBELIVE'),
+
+  // Shiprocket & Fastrr Checkout
+  SR_API_EMAIL: z.string().optional().default('oxytriumdynamics@gmail.com'),
+  SR_API_PASSWORD: z.string().optional().default(''),
+  SR_PICKUP_LOCATION: z.string().optional().default('Primary'),
+  SR_PICKUP_PINCODE: z.string().optional().default('143001'),
+  SR_WEBHOOK_TOKEN: z.string().optional().default('change-me'),
+  SR_CHECKOUT_API_KEY: z.string().optional().default(''),
+  SR_CHECKOUT_API_SECRET: z.string().optional().default(''),
+  SR_CHECKOUT_TOKEN_URL: z.string().optional().default(''),
+  SR_CHECKOUT_ORDER_URL: z.string().optional().default(''),
+  SR_CHECKOUT_WEBHOOK_SIG_HEADER: z.string().optional().default('x-api-hmac-sha256'),
+
+  // Cloudinary Image Storage
+  CLOUDINARY_CLOUD_NAME: z.string().optional().default(''),
+  CLOUDINARY_API_KEY: z.string().optional().default(''),
+  CLOUDINARY_API_SECRET: z.string().optional().default(''),
+  CLOUDINARY_URL: z.string().optional().default(''),
 });
 
 const parsed = envSchema.safeParse(process.env);

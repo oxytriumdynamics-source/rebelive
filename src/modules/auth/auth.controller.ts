@@ -43,7 +43,7 @@ export async function login(req: Request, res: Response, next: NextFunction): Pr
     const { user, tokens, emailVerified } = await authService.loginUser(req.body);
 
     if (!emailVerified) {
-      // Return 200 with emailVerified: false — frontend shows OTP stage
+      // Return 200 with emailVerified: false - frontend shows OTP stage
       res.status(200).json({
         status: 'unverified',
         message: 'Account not verified. A new OTP has been sent to your email.',

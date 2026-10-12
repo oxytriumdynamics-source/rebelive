@@ -1,4 +1,4 @@
-// prisma/schema.prisma — MongoDB provider
+// prisma/schema.prisma - MongoDB provider
 
 generator client {
   provider = "prisma-client-js"
@@ -176,21 +176,47 @@ model Tag {
 }
 
 model Product {
-  id                String   @id @default(auto()) @map("_id") @db.ObjectId
-  name              String
-  slug              String   @unique
-  tagline           String?
-  description       String
-  ingredients       String?
-  nutritionInfo     Json?    @map("nutrition_info")
-  howToEnjoy        String?  @map("how_to_enjoy")
-  isActive          Boolean  @default(true) @map("is_active")
-  isFeatured        Boolean  @default(false) @map("is_featured")
-  categoryId        String   @map("category_id") @db.ObjectId
-  personalityTypeId String?  @map("personality_type_id") @db.ObjectId
-  tagIds            String[] @map("tag_ids") @db.ObjectId
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
+  id                   String   @id @default(auto()) @map("_id") @db.ObjectId
+  name                 String
+  slug                 String   @unique
+  displayTitle         String?  @map("display_title")
+  flavor               String?
+  tagline              String?
+  description          String
+  story                String?
+  volume               String?
+  sugar                String?
+  caffeine             String?
+  calories             String?
+  notes                String[]
+  tastingNotesDetailed Json?    @map("tasting_notes_detailed")
+  model                String?
+  canImage             String?  @map("can_image")
+  image                String?
+  renderImage          String?  @map("render_image")
+  brandLogo            String?  @map("brand_logo")
+  bgImage              String?  @map("bg_image")
+  bgGradient           String?  @map("bg_gradient")
+  primaryTone          String?  @map("primary_tone")
+  accentHex            String?  @map("accent_hex")
+  rating               Json?
+  benefits             Json?
+  nutrition            Json?
+  gallery              Json?
+  specs                Json?
+  ingredients          String?
+  nutritionInfo        Json?    @map("nutrition_info")
+  howToEnjoy           String?  @map("how_to_enjoy")
+  netQuantity          String?  @default("250 ml") @map("net_quantity")
+  isVegetarian         Boolean  @default(true) @map("is_vegetarian")
+  additionalInfo       Json?    @map("additional_info")
+  isActive             Boolean  @default(true) @map("is_active")
+  isFeatured           Boolean  @default(false) @map("is_featured")
+  categoryId           String   @map("category_id") @db.ObjectId
+  personalityTypeId    String?  @map("personality_type_id") @db.ObjectId
+  tagIds               String[] @map("tag_ids") @db.ObjectId
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
 
   category        Category          @relation(fields: [categoryId], references: [id])
   personalityType PersonalityType?  @relation(fields: [personalityTypeId], references: [id])
@@ -421,11 +447,13 @@ model Order {
   shippingAmount    Float       @default(0) @map("shipping_amount")
   total             Float
   couponId          String?     @map("coupon_id") @db.ObjectId
-  shippingAddressId String      @map("shipping_address_id") @db.ObjectId
-  trackingNumber    String?     @map("tracking_number")
-  trackingUrl       String?     @map("tracking_url")
-  notes             String?
-  createdAt         DateTime    @default(now()) @map("created_at")
+  shippingAddressId    String      @map("shipping_address_id") @db.ObjectId
+  trackingNumber       String?     @map("tracking_number")
+  trackingUrl          String?     @map("tracking_url")
+  shiprocketOrderId    String?     @map("shiprocket_order_id")
+  shiprocketShipmentId String?     @map("shiprocket_shipment_id")
+  notes                String?
+  createdAt            DateTime    @default(now()) @map("created_at")
   updatedAt         DateTime    @updatedAt @map("updated_at")
 
   user            User               @relation(fields: [userId], references: [id])

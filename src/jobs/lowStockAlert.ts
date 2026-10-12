@@ -15,7 +15,7 @@ export function startLowStockAlertJob(): void {
       where: {
         isActive: true,
         stockQty: { gt: 0 },
-        // Find where stockQty <= lowStockThreshold — using raw comparison via filter
+        // Find where stockQty <= lowStockThreshold - using raw comparison via filter
       },
       include: { product: { select: { name: true, slug: true } } },
     });
@@ -31,7 +31,7 @@ export function startLowStockAlertJob(): void {
     logger.warn(`[Job] ⚠️  ${alerts.length} variants are running low:`);
     for (const variant of alerts) {
       logger.warn(
-        `[Job]  - ${variant.product.name} (${variant.name} | SKU: ${variant.sku}) — Stock: ${variant.stockQty} / Threshold: ${variant.lowStockThreshold}`,
+        `[Job]  - ${variant.product.name} (${variant.name} | SKU: ${variant.sku}) - Stock: ${variant.stockQty} / Threshold: ${variant.lowStockThreshold}`,
       );
     }
 

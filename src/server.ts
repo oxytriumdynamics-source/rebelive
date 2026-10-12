@@ -16,7 +16,7 @@ async function bootstrap(): Promise<void> {
     // 1. Connect to MongoDB via Prisma
     await connectDB();
 
-    // 2. Connect to Redis (optional — won't crash if unavailable)
+    // 2. Connect to Redis (optional - won't crash if unavailable)
     await connectRedis();
 
     // 3. Start background jobs
@@ -38,7 +38,7 @@ async function bootstrap(): Promise<void> {
 // ─── Graceful Shutdown ────────────────────────────────
 
 async function shutdown(signal: string): Promise<void> {
-  logger.info(`\n📴 [Server] ${signal} received — shutting down gracefully...`);
+  logger.info(`\n📴 [Server] ${signal} received - shutting down gracefully...`);
   server.close(async () => {
     await disconnectDB();
     logger.info('✅ [Server] Server shut down cleanly');

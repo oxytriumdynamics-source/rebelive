@@ -23,7 +23,7 @@ async function main() {
     console.log(`✅  Dropped non-sparse index "${INDEX_NAME}"`);
   } catch (err: any) {
     if (err?.message?.includes('index not found')) {
-      console.log(`ℹ️   Index "${INDEX_NAME}" did not exist — skipping drop.`);
+      console.log(`ℹ️   Index "${INDEX_NAME}" did not exist - skipping drop.`);
     } else {
       throw err;
     }

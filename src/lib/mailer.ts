@@ -51,6 +51,6 @@ export async function sendMail(opts: MailOptions): Promise<void> {
     logger.info(`[Mail] Sent "${opts.subject}" → ${opts.to}`);
   } catch (err) {
     logger.error(`[Mail] Failed to send "${opts.subject}" → ${opts.to}: ${err}`);
-    // Don't throw — mail failures should not break the auth flow
+    // Don't throw - mail failures should not break the auth flow
   }
 }

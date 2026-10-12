@@ -30,7 +30,7 @@ export function startSubscriptionRenewalJob(): void {
     for (const sub of dueSubscriptions) {
       try {
         if (sub.variant.stockQty < sub.quantity) {
-          logger.warn(`[Job] Skipping subscription ${sub.id} — insufficient stock for ${sub.variant.sku}`);
+          logger.warn(`[Job] Skipping subscription ${sub.id} - insufficient stock for ${sub.variant.sku}`);
           continue;
         }
 
