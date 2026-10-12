@@ -92,3 +92,71 @@ export async function replyToTicket(req: Request, res: Response, next: NextFunct
     res.status(201).json({ status: 'success', data: msg });
   } catch (err) { next(err); }
 }
+
+// POST /api/v1/support/contact-query (Public)
+export async function submitContactQuery(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { firstName, lastName, email, phone, services, message } = req.body;
+    if (!firstName || !email || !message) {
+      res.status(400).json({ status: 'error', message: 'Name, email, and message are required.' });
+      return;
+    }
+    const query = await prisma.contactQuery.create({
+      data: {
+        firstName: String(firstName).trim(),
+        lastName: String(lastName || '').trim(),
+        email: String(email).trim().toLowerCase(),
+        phone: String(phone || '').trim(),
+        services: Array.isArray(services) ? services : services ? [String(services)] : [],
+        message: String(message).trim(),
+        status: 'NEW',
+      },
+    });
+    res.status(201).json({ status: 'success', data: query });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /api/v1/support/corporate-query (Public)
+export async function submitCorporateQuery(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const {
+      refId,
+      fullName,
+      companyName,
+      designation,
+      email,
+      phone,
+      city,
+      approxQuantity,
+      natureOfRequirement,
+      message,
+    } = req.body;
+
+    if (!fullName || !companyName || !email) {
+      res.status(400).json({ status: 'error', message: 'Full name, company name, and email are required.' });
+      return;
+    }
+
+    const query = await prisma.corporateQuery.create({
+      data: {
+        refId: refId ? String(refId).trim() : `CORP-${Math.floor(100000 + Math.random() * 900000)}`,
+        fullName: String(fullName).trim(),
+        companyName: String(companyName).trim(),
+        designation: designation ? String(designation).trim() : null,
+        email: String(email).trim().toLowerCase(),
+        phone: String(phone || '').trim(),
+        city: city ? String(city).trim() : null,
+        approxQuantity: approxQuantity ? String(approxQuantity).trim() : null,
+        natureOfRequirement: natureOfRequirement ? String(natureOfRequirement).trim() : null,
+        message: message ? String(message).trim() : null,
+        status: 'NEW',
+      },
+    });
+    res.status(201).json({ status: 'success', data: query });
+  } catch (err) {
+    next(err);
+  }
+}
+

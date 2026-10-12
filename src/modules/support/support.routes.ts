@@ -8,6 +8,10 @@ const router = Router();
 router.get('/faqs', supportController.getFAQs);
 router.patch('/faqs/:id/view', supportController.incrementFAQView);
 
+// Public Contact & Corporate Query routes
+router.post('/contact-query', supportController.submitContactQuery);
+router.post('/corporate-query', supportController.submitCorporateQuery);
+
 // Protected ticket routes
 router.get('/tickets', authenticate, supportController.getTickets);
 router.get('/tickets/:id', authenticate, supportController.getTicket);

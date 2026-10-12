@@ -10,6 +10,7 @@ import { shiprocketService } from '../shipping/shiprocket.service';
 import { sendMail } from '../../lib/mailer';
 import { otpEmailHtml } from '../../lib/emailTemplates';
 import { uploadToCloudinary } from '../../lib/cloudinary';
+import { logger } from '../../shared/utils/logger';
 import type { UserRole, OrderStatus } from '@prisma/client';
 
 const qStr = (req: Request, key: string): string | undefined => {
@@ -635,6 +636,38 @@ export async function updateProduct(req: Request, res: Response, next: NextFunct
       where: { id },
       data: productData,
     });
+
+    // Automatically synchronize Trio ('variety') product nutrition in DB when Apex, Aviva, or Capella is updated
+    const updatedSlug = (updated.slug || '').toLowerCase();
+    if (['apex', 'aviva', 'capella'].includes(updatedSlug) && updated.nutritionInfo) {
+      try {
+        const varietyProduct = await prisma.product.findUnique({
+          where: { slug: 'variety' },
+        });
+        if (varietyProduct) {
+          const currentVarietyInfo = (varietyProduct.nutritionInfo as any) || {};
+          const currentTrioNutrients = currentVarietyInfo.trioNutrients || {};
+          currentTrioNutrients[updatedSlug] = updated.nutritionInfo;
+
+          await prisma.product.update({
+            where: { slug: 'variety' },
+            data: {
+              nutritionInfo: {
+                ...currentVarietyInfo,
+                trioNutrients: currentTrioNutrients,
+              },
+              nutrition: {
+                ...((varietyProduct.nutrition as any) || {}),
+                trioNutrients: currentTrioNutrients,
+              },
+            },
+          });
+          logger.info(`[Admin] Synchronized Trio ('variety') product nutrition with updated '${updatedSlug}' in database`);
+        }
+      } catch (syncErr) {
+        logger.error(`[Admin] Failed to sync Trio product nutrition for '${updatedSlug}':`, syncErr);
+      }
+    }
 
     // If variants / packs were updated or created
     if (Array.isArray(variants)) {

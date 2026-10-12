@@ -757,3 +757,44 @@ model Testimonial {
 
   @@map("testimonials")
 }
+
+// ─── CONTACT & USER QUERIES ────────────────────────────
+
+model ContactQuery {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  firstName String   @map("first_name")
+  lastName  String   @map("last_name")
+  email     String
+  phone     String
+  services  String[] @default([])
+  message   String
+  status    String   @default("NEW") // "NEW", "VIEWED", "IN_PROCESS", "RESOLVED", "IGNORED"
+  adminNote String?  @map("admin_note")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("contact_queries")
+}
+
+// ─── CORPORATE & BULK QUERIES ──────────────────────────
+
+model CorporateQuery {
+  id                  String   @id @default(auto()) @map("_id") @db.ObjectId
+  refId               String?  @map("ref_id")
+  fullName            String   @map("full_name")
+  companyName         String   @map("company_name")
+  designation         String?
+  email               String
+  phone               String
+  city                String?
+  approxQuantity      String?  @map("approx_quantity")
+  natureOfRequirement String?  @map("nature_of_requirement")
+  message             String?
+  status              String   @default("NEW") // "NEW", "VIEWED", "IN_PROCESS", "RESOLVED", "IGNORED"
+  adminNote           String?  @map("admin_note")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@map("corporate_queries")
+}
+
