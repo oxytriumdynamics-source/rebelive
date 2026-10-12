@@ -13,13 +13,15 @@ const upload = multer({
   },
 });
 
-// ─── Public Admin Authentication (Standard 2-Step OTP + Test Bypass) ─────
+// ─── Public Admin Authentication (Standard 2-Step Email + Password + OTP) ─────
 router.post('/login-request', adminController.adminLoginRequest);
 router.post('/login-verify-otp', adminController.adminVerifyOtp);
-router.post('/test-login', adminController.testAdminLogin);
 
 // ─── Protected Routes (Requires Auth + ADMIN / SUPERADMIN Role) ────
 router.use(authenticate, requireAdmin);
+
+// ─── Admin Profile & Password Management ───────────────
+router.patch('/change-password', adminController.changeAdminPassword);
 
 // ─── Dashboard ────────────────────────────────────────
 router.get('/dashboard', adminController.getDashboard);

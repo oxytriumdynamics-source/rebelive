@@ -40,25 +40,21 @@ export async function adminLoginRequest(req: Request, res: Response, next: NextF
     const cleanEmail = email.trim().toLowerCase();
     let user = await prisma.user.findUnique({ where: { email: cleanEmail } });
 
-    // Auto-bootstrap master root account if it doesn't exist yet
-    const isRootMaster =
-      cleanEmail === 'root@rebelive.com' ||
-      cleanEmail === 'admin@rebelive.com' ||
-      cleanEmail === 'oxytriumdynamics@gmail.com';
-
-    if (!user && isRootMaster) {
+    // Auto-bootstrap master SUPERADMIN account if missing
+    if (!user && cleanEmail === 'oxytriumdynamics@gmail.com') {
       const hashed = await hashPassword(password);
       user = await prisma.user.create({
         data: {
           email: cleanEmail,
-          firstName: 'Root',
-          lastName: 'Operator',
+          firstName: 'Oxytrium',
+          lastName: 'Dynamics',
           role: 'SUPERADMIN',
           passwordHash: hashed,
           emailVerified: true,
           authProvider: 'local',
         },
       });
+      logger.info(`[ADMIN INIT] Initialized Super Admin account for ${cleanEmail}`);
     }
 
     if (!user || !user.passwordHash) {
@@ -72,33 +68,7 @@ export async function adminLoginRequest(req: Request, res: Response, next: NextF
 
     // Ensure the user has ADMIN or SUPERADMIN privileges
     if (user.role !== 'ADMIN' && user.role !== 'SUPERADMIN') {
-      if (isRootMaster) {
-        user = await prisma.user.update({
-          where: { id: user.id },
-          data: { role: 'SUPERADMIN' },
-        });
-      } else {
-        throw new ForbiddenError('Access restricted to administrators only');
-      }
-    }
-
-    // Allow direct login without OTP if requested for testing/development
-    if (req.body.bypassOtp || req.body.skipOtp) {
-      const accessToken = generateAccessToken(user);
-      const refreshToken = generateRefreshToken(user);
-      const { passwordHash: _p, refreshTokens: _r, googleId: _g, otpCode: _o, ...safeUser } = user;
-
-      res.status(200).json({
-        status: 'success',
-        message: '⚡ Admin authorization granted directly (OTP bypassed for test mode)',
-        data: {
-          user: safeUser,
-          accessToken,
-          refreshToken,
-          bypassedOtp: true,
-        },
-      });
-      return;
+      throw new ForbiddenError('Access restricted to administrators only');
     }
 
     // Generate 6-digit numeric OTP
@@ -119,83 +89,17 @@ export async function adminLoginRequest(req: Request, res: Response, next: NextF
         html: otpEmailHtml({ firstName: user.firstName, otp }),
       });
     } catch (mailErr) {
-      console.warn('⚠️ Mailer failed for admin OTP, demo OTP will be available in response:', mailErr);
+      logger.warn(`Mailer error for admin OTP dispatch to ${user.email}: ${mailErr}`);
     }
+
+    // Log OTP on server terminal for operator reference (never exposed in client response)
+    logger.info(`[ADMIN 2FA DISPATCH] Security verification code for ${user.email} is: ${otp}`);
 
     res.status(200).json({
       status: 'success',
       message: `2FA security verification code dispatched to ${user.email}`,
       data: {
         email: user.email,
-        // Provided for rapid testing / fallback demo verification
-        demoOtp: otp,
-      },
-    });
-  } catch (err) {
-    next(err);
-  }
-}
-
-/**
- * POST /api/v1/admin/test-login
- * Direct 1-Click Test Admin Login without OTP verification (for rapid testing use).
- */
-export async function testAdminLogin(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const { email = 'testadmin@rebelive.com' } = req.body as { email?: string };
-    const cleanEmail = (email || 'testadmin@rebelive.com').trim().toLowerCase();
-
-    let user = await prisma.user.findUnique({ where: { email: cleanEmail } });
-
-    if (!user) {
-      user = await prisma.user.findFirst({
-        where: {
-          role: { in: ['SUPERADMIN', 'ADMIN'] },
-        },
-      });
-    }
-
-    if (!user) {
-      const hashed = await hashPassword('AdminPassword123!');
-      user = await prisma.user.create({
-        data: {
-          email: cleanEmail,
-          firstName: 'Test',
-          lastName: 'Admin',
-          role: 'SUPERADMIN',
-          passwordHash: hashed,
-          emailVerified: true,
-          authProvider: 'local',
-        },
-      });
-    }
-
-    if (user.role !== 'ADMIN' && user.role !== 'SUPERADMIN') {
-      user = await prisma.user.update({
-        where: { id: user.id },
-        data: { role: 'SUPERADMIN' },
-      });
-    }
-
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        lastLoginAt: new Date(),
-        emailVerified: true,
-      },
-    });
-
-    const accessToken = generateAccessToken(user);
-    const refreshToken = generateRefreshToken(user);
-    const { passwordHash: _p, refreshTokens: _r, googleId: _g, otpCode: _o, ...safeUser } = user;
-
-    res.status(200).json({
-      status: 'success',
-      message: '⚡ Test Admin session initiated successfully without OTP verification',
-      data: {
-        user: safeUser,
-        accessToken,
-        refreshToken,
       },
     });
   } catch (err) {
@@ -227,17 +131,19 @@ export async function adminVerifyOtp(req: Request, res: Response, next: NextFunc
       throw new ForbiddenError('Access restricted to administrators only');
     }
 
-    const submittedHash = crypto.createHash('sha256').update(cleanOtp).digest('hex');
-    const isHashMatch = user.otpCode === submittedHash;
-    const isMockMatch = cleanOtp === '892147' || cleanOtp === '123456' || cleanOtp === '000000' || cleanOtp === '111111';
-
-    const isExpired = user.otpExpiry && new Date() > user.otpExpiry;
-
-    if (!isHashMatch && !isMockMatch) {
-      throw new UnauthorizedError('Invalid or expired OTP code');
+    if (!user.otpCode || !user.otpExpiry) {
+      throw new UnauthorizedError('No pending OTP request found. Please request a new code.');
     }
 
-    if (isHashMatch && isExpired) {
+    const submittedHash = crypto.createHash('sha256').update(cleanOtp).digest('hex');
+    const isHashMatch = user.otpCode === submittedHash;
+    const isExpired = new Date() > user.otpExpiry;
+
+    if (!isHashMatch) {
+      throw new UnauthorizedError('Invalid OTP code');
+    }
+
+    if (isExpired) {
       throw new UnauthorizedError('OTP code has expired. Please request a new one.');
     }
 
@@ -271,6 +177,64 @@ export async function adminVerifyOtp(req: Request, res: Response, next: NextFunc
   }
 }
 
+/**
+ * PATCH /api/v1/admin/change-password
+ * Allows the currently authenticated admin/superadmin to securely update their password.
+ */
+export async function changeAdminPassword(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { currentPassword, newPassword } = req.body as {
+      currentPassword?: string;
+      newPassword?: string;
+    };
+
+    if (!currentPassword || !newPassword) {
+      throw new ValidationError('Current password and new password are required');
+    }
+
+    if (newPassword.length < 8) {
+      throw new ValidationError('New password must be at least 8 characters long');
+    }
+
+    if (!req.user || !req.user.id) {
+      throw new UnauthorizedError('Authentication required');
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+    });
+
+    if (!user || !user.passwordHash) {
+      throw new NotFoundError('Administrator account not found or has no password set');
+    }
+
+    const isMatch = await verifyPassword(currentPassword, user.passwordHash);
+    if (!isMatch) {
+      throw new ValidationError('Current password does not match');
+    }
+
+    const newHashed = await hashPassword(newPassword);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash: newHashed,
+        otpCode: null,
+        otpExpiry: null,
+      },
+    });
+
+    logger.info(`[ADMIN SECURITY] Password successfully updated for admin: ${user.email}`);
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Password successfully updated. Please use your new password on subsequent logins.',
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 // ─── DASHBOARD METRICS ─────────────────────────────────
 
 // GET /api/v1/admin/dashboard
@@ -285,6 +249,10 @@ export async function getDashboard(req: Request, res: Response, next: NextFuncti
       deliveredOrders,
       recentOrders,
       lowStockVariants,
+      totalContactQueries,
+      newContactQueries,
+      totalCorporateQueries,
+      newCorporateQueries,
     ] = await Promise.all([
       prisma.user.count(),
       prisma.order.count(),
@@ -306,6 +274,10 @@ export async function getDashboard(req: Request, res: Response, next: NextFuncti
         include: { product: { select: { name: true, slug: true } } },
         take: 10,
       }),
+      prisma.contactQuery.count().catch(() => 0),
+      prisma.contactQuery.count({ where: { status: 'NEW' } }).catch(() => 0),
+      prisma.corporateQuery.count().catch(() => 0),
+      prisma.corporateQuery.count({ where: { status: 'NEW' } }).catch(() => 0),
     ]);
 
     const revenueResult = await prisma.order.aggregate({
@@ -330,6 +302,12 @@ export async function getDashboard(req: Request, res: Response, next: NextFuncti
           deliveredOrders,
           shiprocketSyncedOrders,
           totalRevenue: revenueResult._sum.total ?? 0,
+          totalContactQueries,
+          newContactQueries,
+          totalCorporateQueries,
+          newCorporateQueries,
+          totalInquiries: (totalContactQueries || 0) + (totalCorporateQueries || 0),
+          newInquiries: (newContactQueries || 0) + (newCorporateQueries || 0),
         },
         recentOrders,
         lowStockVariants,
@@ -408,6 +386,7 @@ export async function getUser(req: Request, res: Response, next: NextFunction): 
 // PATCH /api/v1/admin/users/:id
 export async function updateUser(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
+    const targetUserId = paramStr(req);
     const { role, emailVerified, firstName, lastName, phone } = req.body as {
       role?: UserRole;
       emailVerified?: boolean;
@@ -415,11 +394,33 @@ export async function updateUser(req: Request, res: Response, next: NextFunction
       lastName?: string;
       phone?: string;
     };
+
+    const targetUser = await prisma.user.findUnique({
+      where: { id: targetUserId },
+    });
+
+    if (!targetUser) {
+      throw new NotFoundError('User');
+    }
+
+    // Role privilege & hierarchy protection:
+    if (role !== undefined && role !== targetUser.role) {
+      // 1. Only SUPERADMIN can modify/assign roles
+      if (req.user?.role !== 'SUPERADMIN') {
+        throw new ForbiddenError('Only Super Admin has authority to assign or change user roles');
+      }
+
+      // 2. Protect oxytriumdynamics@gmail.com from being demoted or modified
+      if (targetUser.email === 'oxytriumdynamics@gmail.com' && role !== 'SUPERADMIN') {
+        throw new ForbiddenError('The master Super Admin account cannot be demoted');
+      }
+    }
+
     const user = await prisma.user.update({
-      where: { id: paramStr(req) },
+      where: { id: targetUserId },
       data: {
-        role,
-        emailVerified,
+        ...(role !== undefined ? { role } : {}),
+        ...(emailVerified !== undefined ? { emailVerified } : {}),
         firstName: firstName ?? undefined,
         lastName: lastName ?? undefined,
         phone: phone ?? undefined,
