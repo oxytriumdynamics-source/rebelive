@@ -1326,3 +1326,153 @@ export async function deleteTestimonial(req: Request, res: Response, next: NextF
     next(err);
   }
 }
+
+// ─── CONTACT QUERIES (USER QUERIES) ───────────────────
+
+// GET /api/v1/admin/contact-queries
+export async function getContactQueries(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const status = qStr(req, 'status');
+    const search = qStr(req, 'search');
+
+    const where: any = {};
+    if (status && status !== 'ALL') {
+      where.status = status;
+    }
+    if (search) {
+      where.OR = [
+        { firstName: { contains: search, mode: 'insensitive' } },
+        { lastName: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+        { phone: { contains: search, mode: 'insensitive' } },
+        { message: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    const items = await prisma.contactQuery.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const counts = {
+      total: await prisma.contactQuery.count(),
+      new: await prisma.contactQuery.count({ where: { status: 'NEW' } }),
+      viewed: await prisma.contactQuery.count({ where: { status: 'VIEWED' } }),
+      in_process: await prisma.contactQuery.count({ where: { status: 'IN_PROCESS' } }),
+      resolved: await prisma.contactQuery.count({ where: { status: 'RESOLVED' } }),
+      ignored: await prisma.contactQuery.count({ where: { status: 'IGNORED' } }),
+    };
+
+    res.json({ status: 'success', data: items, counts });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// PATCH /api/v1/admin/contact-queries/:id/status
+export async function updateContactQueryStatus(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = paramStr(req);
+    const { status, adminNote } = req.body;
+
+    const data: any = {};
+    if (status) data.status = String(status).toUpperCase();
+    if (adminNote !== undefined) data.adminNote = adminNote ? String(adminNote).trim() : null;
+
+    const updated = await prisma.contactQuery.update({
+      where: { id },
+      data,
+    });
+
+    res.json({ status: 'success', data: updated });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// DELETE /api/v1/admin/contact-queries/:id
+export async function deleteContactQuery(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = paramStr(req);
+    await prisma.contactQuery.delete({ where: { id } });
+    res.json({ status: 'success', message: 'Contact query deleted successfully' });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── CORPORATE QUERIES ────────────────────────────────
+
+// GET /api/v1/admin/corporate-queries
+export async function getCorporateQueries(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const status = qStr(req, 'status');
+    const search = qStr(req, 'search');
+
+    const where: any = {};
+    if (status && status !== 'ALL') {
+      where.status = status;
+    }
+    if (search) {
+      where.OR = [
+        { fullName: { contains: search, mode: 'insensitive' } },
+        { companyName: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+        { phone: { contains: search, mode: 'insensitive' } },
+        { refId: { contains: search, mode: 'insensitive' } },
+        { city: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    const items = await prisma.corporateQuery.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const counts = {
+      total: await prisma.corporateQuery.count(),
+      new: await prisma.corporateQuery.count({ where: { status: 'NEW' } }),
+      viewed: await prisma.corporateQuery.count({ where: { status: 'VIEWED' } }),
+      in_process: await prisma.corporateQuery.count({ where: { status: 'IN_PROCESS' } }),
+      resolved: await prisma.corporateQuery.count({ where: { status: 'RESOLVED' } }),
+      ignored: await prisma.corporateQuery.count({ where: { status: 'IGNORED' } }),
+    };
+
+    res.json({ status: 'success', data: items, counts });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// PATCH /api/v1/admin/corporate-queries/:id/status
+export async function updateCorporateQueryStatus(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = paramStr(req);
+    const { status, adminNote } = req.body;
+
+    const data: any = {};
+    if (status) data.status = String(status).toUpperCase();
+    if (adminNote !== undefined) data.adminNote = adminNote ? String(adminNote).trim() : null;
+
+    const updated = await prisma.corporateQuery.update({
+      where: { id },
+      data,
+    });
+
+    res.json({ status: 'success', data: updated });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// DELETE /api/v1/admin/corporate-queries/:id
+export async function deleteCorporateQuery(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = paramStr(req);
+    await prisma.corporateQuery.delete({ where: { id } });
+    res.json({ status: 'success', message: 'Corporate query deleted successfully' });
+  } catch (err) {
+    next(err);
+  }
+}
+

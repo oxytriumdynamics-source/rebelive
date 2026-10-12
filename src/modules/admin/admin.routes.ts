@@ -76,4 +76,14 @@ router.post('/testimonials', adminController.createTestimonial);
 router.patch('/testimonials/:id', adminController.updateTestimonial);
 router.delete('/testimonials/:id', adminController.deleteTestimonial);
 
+// ─── Contact Queries (User Queries) ────────────────────
+router.get('/contact-queries', adminController.getContactQueries);
+router.patch('/contact-queries/:id/status', adminController.updateContactQueryStatus);
+router.delete('/contact-queries/:id', adminController.deleteContactQuery);
+
+// ─── Corporate Queries ────────────────────────────────
+router.get('/corporate-queries', adminController.getCorporateQueries);
+router.patch('/corporate-queries/:id/status', adminController.updateCorporateQueryStatus);
+router.delete('/corporate-queries/:id', adminController.deleteCorporateQuery);
+
 export default router;
