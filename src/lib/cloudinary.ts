@@ -52,23 +52,7 @@ export async function uploadToCloudinary(
   const folder = options?.folder || 'rebelive/products';
 
   if (!isCloudinaryConfigured()) {
-    console.warn(
-      '⚠️ Cloudinary credentials are not set in environment. Returning fallback asset path.'
-    );
-    // If it is a base64 string or buffer, return a valid usable path
-    const fallbackId = `rbl-asset-${Date.now().toString().slice(-6)}`;
-    return {
-      url: typeof fileSource === 'string' && fileSource.startsWith('http')
-        ? fileSource
-        : '/products/apex.webp',
-      secure_url: typeof fileSource === 'string' && fileSource.startsWith('http')
-        ? fileSource
-        : '/products/apex.webp',
-      public_id: `${folder}/${fallbackId}`,
-      width: 800,
-      height: 1000,
-      format: 'webp',
-    };
+    throw new Error('Cloudinary credentials (CLOUDINARY_URL or CLOUD_NAME/API_KEY/API_SECRET) are not configured in environment.');
   }
 
   const defaultTransformation = folder.includes('testimonials')

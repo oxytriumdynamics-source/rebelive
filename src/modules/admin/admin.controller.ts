@@ -499,6 +499,7 @@ export async function createProduct(req: Request, res: Response, next: NextFunct
       calories,
       canImage,
       image,
+      renderImage,
       bgGradient,
       primaryTone,
       accentHex,
@@ -540,9 +541,9 @@ export async function createProduct(req: Request, res: Response, next: NextFunct
         sugar: sugar || '0g',
         caffeine: caffeine || '120mg',
         calories: calories || '10 kcal',
-        canImage: canImage || image || '/products/apex.webp',
-        image: image || canImage || '/products/apex.webp',
-        renderImage: image || canImage || '/products/apex.webp',
+        canImage: canImage ? String(canImage).trim() : null,
+        image: image ? String(image).trim() : (canImage ? String(canImage).trim() : null),
+        renderImage: renderImage ? String(renderImage).trim() : null,
         bgGradient: bgGradient || 'from-neutral-900 to-black',
         primaryTone: primaryTone || '#d8ac52',
         accentHex: accentHex || '#d8ac52',
@@ -617,6 +618,17 @@ export async function updateProduct(req: Request, res: Response, next: NextFunct
     }
     if (productData.isFeatured !== undefined) {
       productData.isFeatured = Boolean(productData.isFeatured);
+    }
+
+    // Clean image fields (allow explicit clearing to null)
+    if (productData.canImage !== undefined) {
+      productData.canImage = productData.canImage && String(productData.canImage).trim() ? String(productData.canImage).trim() : null;
+    }
+    if (productData.image !== undefined) {
+      productData.image = productData.image && String(productData.image).trim() ? String(productData.image).trim() : null;
+    }
+    if (productData.renderImage !== undefined) {
+      productData.renderImage = productData.renderImage && String(productData.renderImage).trim() ? String(productData.renderImage).trim() : null;
     }
 
     const updated = await prisma.product.update({
@@ -1155,7 +1167,7 @@ const DEFAULT_TESTIMONIALS = [
     role: 'Software Architect & Biohacker',
     quote: 'Clean sustained mental clarity through long coding sessions without any crash or anxiety. Rebelive is literally in a class of its own.',
     rating: 5,
-    image: '/testimonials/rebel-nishant.webp',
+    image: '',
     imagePosition: 'center 15%',
     isFeatured: true,
     sortOrder: 1,
@@ -1165,7 +1177,7 @@ const DEFAULT_TESTIMONIALS = [
     role: 'Product Designer',
     quote: 'The calm focus and zero-sugar formulation completely upgraded my workday routine. No jitters, pure natural flow state.',
     rating: 5,
-    image: '/testimonials/rebel-ashray.webp',
+    image: '',
     imagePosition: 'center 15%',
     isFeatured: true,
     sortOrder: 2,
@@ -1175,7 +1187,7 @@ const DEFAULT_TESTIMONIALS = [
     role: 'Founder & Endurance Athlete',
     quote: 'Unmatched sustained energy that keeps me dialed in and sharp throughout the day. Zero sugar crash, just pure cognitive momentum.',
     rating: 5,
-    image: '/testimonials/rebel-vaibhav.webp',
+    image: '',
     imagePosition: 'center 18%',
     isFeatured: true,
     sortOrder: 3,
@@ -1185,7 +1197,7 @@ const DEFAULT_TESTIMONIALS = [
     role: 'Creative Director',
     quote: 'Game-changing endurance and crisp mental sharpness. Zero jitters, no crash, just pure sustained high performance all day long.',
     rating: 5,
-    image: '/testimonials/rebel-dhirendra.webp',
+    image: '',
     imagePosition: 'center 20%',
     isFeatured: true,
     sortOrder: 4,
@@ -1195,18 +1207,9 @@ const DEFAULT_TESTIMONIALS = [
 // GET /api/v1/admin/testimonials
 export async function getTestimonials(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    let list = await prisma.testimonial.findMany({
+    const list = await prisma.testimonial.findMany({
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
     });
-
-    if (list.length === 0) {
-      for (const t of DEFAULT_TESTIMONIALS) {
-        await prisma.testimonial.create({ data: t });
-      }
-      list = await prisma.testimonial.findMany({
-        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
-      });
-    }
 
     res.json({ status: 'success', data: list });
   } catch (err) {
@@ -1240,7 +1243,7 @@ export async function createTestimonial(req: Request, res: Response, next: NextF
         role: role ? role.trim() : null,
         quote: quote.trim(),
         rating: Number(rating) || 5,
-        image: image || '/testimonials/rebel-nishant.webp',
+        image: image ? String(image).trim() : '',
         imagePosition: imagePosition || 'center 15%',
         isFeatured: isFeatured !== undefined ? Boolean(isFeatured) : true,
         sortOrder: Number(sortOrder) || 0,
@@ -1264,7 +1267,7 @@ export async function updateTestimonial(req: Request, res: Response, next: NextF
     if (role !== undefined) data.role = role ? role.trim() : null;
     if (quote !== undefined) data.quote = quote.trim();
     if (rating !== undefined) data.rating = Number(rating);
-    if (image !== undefined) data.image = image;
+    if (image !== undefined) data.image = image ? String(image).trim() : '';
     if (imagePosition !== undefined) data.imagePosition = imagePosition;
     if (isFeatured !== undefined) data.isFeatured = Boolean(isFeatured);
     if (sortOrder !== undefined) data.sortOrder = Number(sortOrder);
