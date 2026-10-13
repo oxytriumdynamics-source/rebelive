@@ -43,6 +43,20 @@ router.post('/send-otp', authLimiter, validate(sendOtpSchema), authController.se
 router.post('/verify-otp', authLimiter, validate(verifyOtpSchema), authController.verifyOtp);
 
 /**
+ * @route   POST /api/v1/auth/forgot-password-request
+ * @desc    Request 6-digit OTP to reset forgotten password
+ * @access  Public
+ */
+router.post('/forgot-password-request', authLimiter, authController.forgotPasswordRequest);
+
+/**
+ * @route   POST /api/v1/auth/forgot-password-verify
+ * @desc    Verify OTP and set new password
+ * @access  Public
+ */
+router.post('/forgot-password-verify', authLimiter, authController.forgotPasswordVerify);
+
+/**
  * @route   POST /api/v1/auth/refresh
  * @desc    Refresh access token using refresh token (cookie or body)
  * @access  Public

@@ -14,6 +14,7 @@ import {
 import { logger } from '../../shared/utils/logger';
 import { sendMail } from '../../lib/mailer';
 import { otpEmailHtml, greetingEmailHtml } from '../../lib/emailTemplates';
+import { formatRebelId } from '../../shared/utils/rebelId';
 import type { RegisterInput, LoginInput, SendOtpInput, VerifyOtpInput } from './auth.validator';
 import type { User } from '@prisma/client';
 
@@ -110,6 +111,10 @@ export async function loginUser(
 
   const valid = await verifyPassword(input.password, user.passwordHash);
   if (!valid) throw new UnauthorizedError('Incorrect password. Please try again.');
+
+  if (user.isRestricted) {
+    throw new ForbiddenError('Your account has been restricted by an administrator. Please contact support.');
+  }
 
   // If email not verified, send a fresh OTP and respond with flag
   if (!user.emailVerified) {
@@ -267,6 +272,90 @@ export async function verifyOtp(
   return { user: sanitizeUser(verified), tokens };
 }
 
+// ─── Forgot Password OTP Service ───────────────────────
+
+export async function forgotPasswordRequest(email: string): Promise<void> {
+  const cleanEmail = email.trim().toLowerCase();
+  const user = await prisma.user.findUnique({ where: { email: cleanEmail } });
+  if (!user) {
+    throw new NotFoundError('No account found with this email address');
+  }
+
+  if (user.isRestricted) {
+    throw new ForbiddenError('Your account has been restricted by an administrator. Please contact support.');
+  }
+
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
+  const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { otpCode: otpHash, otpExpiry },
+  });
+
+  try {
+    await sendMail({
+      to: user.email,
+      subject: `[REBELIVE] ${otp} is your Password Reset Code`,
+      html: otpEmailHtml({ firstName: user.firstName, otp }),
+    });
+  } catch (mailErr) {
+    logger.warn(`Mailer error for password reset OTP dispatch to ${user.email}: ${mailErr}`);
+  }
+
+  logger.info(`[Auth] Password reset OTP sent to: ${user.email} -> ${otp}`);
+}
+
+export async function forgotPasswordVerify(
+  email: string,
+  otp: string,
+  newPassword: string,
+): Promise<{ user: Partial<User>; tokens: TokenPair }> {
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanOtp = otp.trim();
+
+  if (!newPassword || newPassword.length < 8) {
+    throw new BadRequestError('Password must be at least 8 characters long');
+  }
+
+  const user = await prisma.user.findUnique({ where: { email: cleanEmail } });
+  if (!user || !user.otpCode || !user.otpExpiry) {
+    throw new UnauthorizedError('No pending password reset request found. Please request a new code.');
+  }
+
+  if (user.isRestricted) {
+    throw new ForbiddenError('Your account has been restricted by an administrator. Please contact support.');
+  }
+
+  const submittedHash = crypto.createHash('sha256').update(cleanOtp).digest('hex');
+  if (user.otpCode !== submittedHash) {
+    throw new UnauthorizedError('Invalid verification code.');
+  }
+
+  if (new Date() > user.otpExpiry) {
+    throw new UnauthorizedError('Verification code has expired. Please request a new code.');
+  }
+
+  const newPasswordHash = await hashPassword(newPassword);
+
+  const updated = await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      passwordHash: newPasswordHash,
+      otpCode: null,
+      otpExpiry: null,
+      emailVerified: true,
+      lastLoginAt: new Date(),
+    },
+  });
+
+  logger.info(`[Auth] Password reset successfully for: ${updated.email}`);
+
+  const tokens = await generateAndStoreTokens(updated);
+  return { user: sanitizeUser(updated), tokens };
+}
+
 // ─── Helpers ───────────────────────────────────────────
 
 async function generateAndStoreTokens(user: User): Promise<TokenPair> {
@@ -285,7 +374,10 @@ async function generateAndStoreTokens(user: User): Promise<TokenPair> {
   return { accessToken, refreshToken };
 }
 
-export function sanitizeUser(user: User): Partial<User> {
+export function sanitizeUser(user: User): Partial<User> & { rebelId: string } {
   const { passwordHash, refreshTokens, googleId, otpCode, otpExpiry, ...safe } = user;
-  return safe;
+  return {
+    ...safe,
+    rebelId: formatRebelId(user.id),
+  };
 }

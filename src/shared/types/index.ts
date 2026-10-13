@@ -8,6 +8,7 @@ export interface AuthUser {
   firstName: string;
   lastName: string;
   emailVerified: boolean;
+  isRestricted?: boolean;
 }
 
 // Augment Express namespace

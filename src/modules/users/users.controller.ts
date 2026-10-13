@@ -3,6 +3,7 @@ import { prisma } from '../../config/database';
 import { NotFoundError } from '../../shared/errors/AppError';
 import { getPagination, buildPaginationResult } from '../../shared/types';
 import { hashPassword } from '../../shared/utils/password';
+import { formatRebelId } from '../../shared/utils/rebelId';
 
 const userId = (req: Request): string => req.user!.id;
 const paramId = (req: Request, key = 'id'): string => req.params[key] as string;
@@ -20,7 +21,7 @@ export async function getProfile(req: Request, res: Response, next: NextFunction
     });
     if (!user) throw new NotFoundError('User');
     const { passwordHash, refreshTokens, googleId, otpCode, otpExpiry, ...safe } = user as any;
-    res.json({ status: 'success', data: safe });
+    res.json({ status: 'success', data: { ...safe, rebelId: formatRebelId(user.id) } });
   } catch (err) { next(err); }
 }
 
@@ -44,7 +45,7 @@ export async function updateProfile(req: Request, res: Response, next: NextFunct
       },
     });
     const { passwordHash, refreshTokens, googleId, otpCode, otpExpiry, ...safe } = user as any;
-    res.json({ status: 'success', data: safe });
+    res.json({ status: 'success', data: { ...safe, rebelId: formatRebelId(user.id) } });
   } catch (err) { next(err); }
 }
 

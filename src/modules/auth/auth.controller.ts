@@ -157,6 +157,44 @@ export async function me(req: Request, res: Response, next: NextFunction): Promi
   }
 }
 
+// POST /api/v1/auth/forgot-password-request
+export async function forgotPasswordRequest(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { email } = req.body as { email?: string };
+    if (!email) {
+      res.status(400).json({ status: 'error', message: 'Email address is required' });
+      return;
+    }
+    await authService.forgotPasswordRequest(email);
+    res.status(200).json({
+      status: 'success',
+      message: 'Verification code dispatched to your email address.',
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /api/v1/auth/forgot-password-verify
+export async function forgotPasswordVerify(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { email, otp, newPassword } = req.body as { email?: string; otp?: string; newPassword?: string };
+    if (!email || !otp || !newPassword) {
+      res.status(400).json({ status: 'error', message: 'Email, verification code, and new password are required' });
+      return;
+    }
+    const { user, tokens } = await authService.forgotPasswordVerify(email, otp, newPassword);
+    setTokenCookies(res, tokens.accessToken, tokens.refreshToken);
+    res.status(200).json({
+      status: 'success',
+      message: 'Password reset successfully. You are now signed in.',
+      data: { user, accessToken: tokens.accessToken },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 // GET /api/v1/auth/google  → redirects to Google
 export function googleAuth(req: Request, res: Response, next: NextFunction): void {
   passport.authenticate('google', { session: false, scope: ['profile', 'email'] })(req, res, next);

@@ -20,23 +20,25 @@ router.post('/login-verify-otp', adminController.adminVerifyOtp);
 // ─── Protected Routes (Requires Auth + ADMIN / SUPERADMIN Role) ────
 router.use(authenticate, requireAdmin);
 
-// ─── Admin Profile & Password Management ───────────────
-router.patch('/change-password', adminController.changeAdminPassword);
+// ─── Admin Profile & Password Management (SUPERADMIN Only) ────
+router.patch('/change-password', requireSuperAdmin, adminController.changeAdminPassword);
 
 // ─── Dashboard ────────────────────────────────────────
 router.get('/dashboard', adminController.getDashboard);
 
-// ─── User Management ──────────────────────────────────
+// ─── User Management & Super Admin Restrictions ────────
+router.get('/admins', requireSuperAdmin, adminController.getAdminsList);
 router.get('/users', adminController.getUsers);
 router.get('/users/:id', adminController.getUser);
 router.patch('/users/:id', requireSuperAdmin, adminController.updateUser);
+router.patch('/users/:id/restrict', requireSuperAdmin, adminController.restrictUser);
 
-// ─── Product Management (Full CRUD & Cloudinary Uploads)
+// ─── Product Management (Deletions restricted to Super Admin)
 router.get('/products', adminController.getProducts);
 router.get('/products/:id', adminController.getProduct);
 router.post('/products', adminController.createProduct);
 router.patch('/products/:id', adminController.updateProduct);
-router.delete('/products/:id', adminController.deleteProduct);
+router.delete('/products/:id', requireSuperAdmin, adminController.deleteProduct);
 router.post('/upload-image', upload.single('image'), adminController.uploadProductImage);
 
 // ─── Category Management ──────────────────────────────
@@ -76,16 +78,16 @@ router.get('/testimonials', adminController.getTestimonials);
 router.get('/testimonials/:id', adminController.getTestimonial);
 router.post('/testimonials', adminController.createTestimonial);
 router.patch('/testimonials/:id', adminController.updateTestimonial);
-router.delete('/testimonials/:id', adminController.deleteTestimonial);
+router.delete('/testimonials/:id', requireSuperAdmin, adminController.deleteTestimonial);
 
 // ─── Contact Queries (User Queries) ────────────────────
 router.get('/contact-queries', adminController.getContactQueries);
 router.patch('/contact-queries/:id/status', adminController.updateContactQueryStatus);
-router.delete('/contact-queries/:id', adminController.deleteContactQuery);
+router.delete('/contact-queries/:id', requireSuperAdmin, adminController.deleteContactQuery);
 
 // ─── Corporate Queries ────────────────────────────────
 router.get('/corporate-queries', adminController.getCorporateQueries);
 router.patch('/corporate-queries/:id/status', adminController.updateCorporateQueryStatus);
-router.delete('/corporate-queries/:id', adminController.deleteCorporateQuery);
+router.delete('/corporate-queries/:id', requireSuperAdmin, adminController.deleteCorporateQuery);
 
 export default router;

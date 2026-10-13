@@ -40,10 +40,11 @@ passport.use(
           firstName: true,
           lastName: true,
           emailVerified: true,
+          isRestricted: true,
         },
       });
 
-      if (!user) return done(null, false);
+      if (!user || user.isRestricted) return done(null, false);
       return done(null, user);
     } catch (err) {
       logger.error('JWT Strategy error:', err);

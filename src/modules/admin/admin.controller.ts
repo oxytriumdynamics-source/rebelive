@@ -200,6 +200,10 @@ export async function changeAdminPassword(req: Request, res: Response, next: Nex
       throw new UnauthorizedError('Authentication required');
     }
 
+    if (req.user.role !== 'SUPERADMIN') {
+      throw new ForbiddenError('Only Super Admin is authorized to modify administrator passwords');
+    }
+
     const user = await prisma.user.findUnique({
       where: { id: req.user.id },
     });
@@ -387,12 +391,13 @@ export async function getUser(req: Request, res: Response, next: NextFunction): 
 export async function updateUser(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const targetUserId = paramStr(req);
-    const { role, emailVerified, firstName, lastName, phone } = req.body as {
+    const { role, emailVerified, firstName, lastName, phone, isRestricted } = req.body as {
       role?: UserRole;
       emailVerified?: boolean;
       firstName?: string;
       lastName?: string;
       phone?: string;
+      isRestricted?: boolean;
     };
 
     const targetUser = await prisma.user.findUnique({
@@ -416,11 +421,22 @@ export async function updateUser(req: Request, res: Response, next: NextFunction
       }
     }
 
+    // User restriction protection:
+    if (isRestricted !== undefined && isRestricted !== targetUser.isRestricted) {
+      if (req.user?.role !== 'SUPERADMIN') {
+        throw new ForbiddenError('Only Super Admin has authority to restrict or unrestrict users');
+      }
+      if (targetUser.email === 'oxytriumdynamics@gmail.com' && isRestricted) {
+        throw new ForbiddenError('The master Super Admin account cannot be restricted');
+      }
+    }
+
     const user = await prisma.user.update({
       where: { id: targetUserId },
       data: {
         ...(role !== undefined ? { role } : {}),
         ...(emailVerified !== undefined ? { emailVerified } : {}),
+        ...(isRestricted !== undefined ? { isRestricted } : {}),
         firstName: firstName ?? undefined,
         lastName: lastName ?? undefined,
         phone: phone ?? undefined,
@@ -428,6 +444,75 @@ export async function updateUser(req: Request, res: Response, next: NextFunction
     });
     const { passwordHash, refreshTokens, googleId, otpCode, ...safe } = user;
     res.json({ status: 'success', data: safe });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// GET /api/v1/admin/admins
+export async function getAdminsList(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const admins = await prisma.user.findMany({
+      where: {
+        role: { in: ['ADMIN', 'SUPERADMIN'] },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        role: true,
+        emailVerified: true,
+        isRestricted: true,
+        createdAt: true,
+        lastLoginAt: true,
+        phone: true,
+      },
+    });
+    res.json({ status: 'success', data: admins });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// PATCH /api/v1/admin/users/:id/restrict
+export async function restrictUser(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const targetUserId = paramStr(req);
+    const { isRestricted } = req.body as { isRestricted?: boolean };
+
+    if (req.user?.role !== 'SUPERADMIN') {
+      throw new ForbiddenError('Only Super Admin has authority to restrict or unrestrict users');
+    }
+
+    const targetUser = await prisma.user.findUnique({
+      where: { id: targetUserId },
+    });
+
+    if (!targetUser) {
+      throw new NotFoundError('User');
+    }
+
+    if (targetUser.email === 'oxytriumdynamics@gmail.com') {
+      throw new ForbiddenError('The master Super Admin account cannot be restricted');
+    }
+
+    const newRestrictedState = isRestricted !== undefined ? Boolean(isRestricted) : !targetUser.isRestricted;
+
+    const user = await prisma.user.update({
+      where: { id: targetUserId },
+      data: { isRestricted: newRestrictedState },
+    });
+
+    logger.info(`[ADMIN RESTRICTION] User ${user.email} restricted status set to ${newRestrictedState} by ${req.user?.email}`);
+
+    const { passwordHash, refreshTokens, googleId, otpCode, ...safe } = user;
+    res.json({
+      status: 'success',
+      message: newRestrictedState ? `User ${user.email} has been restricted` : `User ${user.email} restriction removed`,
+      data: safe,
+    });
   } catch (err) {
     next(err);
   }

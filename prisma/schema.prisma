@@ -91,6 +91,7 @@ model User {
   avatarUrl     String?   @map("avatar_url")
   role          UserRole  @default(CUSTOMER)
   emailVerified Boolean   @default(false) @map("email_verified")
+  isRestricted  Boolean   @default(false) @map("is_restricted")
   googleId      String?   @unique @map("google_id")   // Google OAuth ID
   authProvider  String    @default("local") @map("auth_provider") // "local" | "google"
   refreshTokens String[]  @map("refresh_tokens") // store hashed refresh tokens
