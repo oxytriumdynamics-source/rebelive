@@ -36,14 +36,29 @@ export async function submitQuiz(req: Request, res: Response, next: NextFunction
       return;
     }
 
+    const currentUid = uid(req);
+    if (currentUid) {
+      const existingPref = await prisma.userPreference.findUnique({
+        where: { userId: currentUid },
+        include: { personalityType: true },
+      });
+
+      if (existingPref?.personalityTypeId) {
+        res.status(403).json({
+          status: 'error',
+          message: 'Your persona archetype is already allocated and cannot be changed.',
+        });
+        return;
+      }
+    }
+
     const result = await prisma.quizResult.upsert({
       where: { sessionId },
-      create: { sessionId, userId: uid(req), personalityTypeId: winnerTypeId, answers },
-      update: { userId: uid(req), personalityTypeId: winnerTypeId, answers },
+      create: { sessionId, userId: currentUid, personalityTypeId: winnerTypeId, answers },
+      update: { userId: currentUid, personalityTypeId: winnerTypeId, answers },
       include: { personalityType: true },
     });
 
-    const currentUid = uid(req);
     if (currentUid) {
       await prisma.userPreference.upsert({
         where: { userId: currentUid },
@@ -91,6 +106,20 @@ export async function claimPersona(req: Request, res: Response, next: NextFuncti
     const userId = req.user?.id;
     if (!userId) {
       res.status(401).json({ status: 'error', message: 'Authentication required' });
+      return;
+    }
+
+    // Check if user already has an allocated persona - once allocated, cannot be changed
+    const existingPref = await prisma.userPreference.findUnique({
+      where: { userId },
+      include: { personalityType: true },
+    });
+
+    if (existingPref?.personalityTypeId) {
+      res.status(403).json({
+        status: 'error',
+        message: 'Your persona archetype is already allocated and cannot be changed.',
+      });
       return;
     }
 

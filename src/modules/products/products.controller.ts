@@ -135,15 +135,52 @@ export async function getBundle(req: Request, res: Response, next: NextFunction)
 // POST /api/v1/products/:id/reviews
 export async function createReview(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { rating, title, body, orderId } = req.body as { rating: string | number; title?: string; body: string; orderId: string };
+    const { rating, title, body, orderId } = req.body as { rating: string | number; title?: string; body: string; orderId?: string };
+
+    const idOrSlug = paramStr(req);
+    const isObjectId = /^[0-9a-fA-F]{24}$/.test(idOrSlug);
+    const product = await prisma.product.findFirst({
+      where: {
+        OR: [
+          { slug: idOrSlug.toLowerCase() },
+          ...(isObjectId ? [{ id: idOrSlug }] : []),
+        ],
+      },
+    });
+    if (!product) throw new NotFoundError('Product');
+
+    const numRating = parseInt(String(rating), 10);
+    if (isNaN(numRating) || numRating < 1 || numRating > 5) {
+      res.status(400).json({ status: 'error', message: 'Rating must be an integer between 1 and 5' });
+      return;
+    }
+
+    if (!body || typeof body !== 'string' || body.trim().length === 0) {
+      res.status(400).json({ status: 'error', message: 'Review body cannot be empty' });
+      return;
+    }
+
+    if (!orderId || typeof orderId !== 'string') {
+      res.status(400).json({ status: 'error', message: 'Valid orderId is required to review a product' });
+      return;
+    }
+
+    const order = await prisma.order.findFirst({
+      where: { id: orderId, userId: req.user!.id },
+    });
+    if (!order) {
+      res.status(400).json({ status: 'error', message: 'Order not found or does not belong to your account' });
+      return;
+    }
+
     const review = await prisma.review.create({
       data: {
         userId: req.user!.id,
-        productId: paramStr(req),
-        orderId,
-        rating: parseInt(rating as string),
-        title,
-        body,
+        productId: product.id,
+        orderId: order.id,
+        rating: numRating,
+        title: title ? String(title).slice(0, 150) : undefined,
+        body: String(body).slice(0, 2000),
       },
     });
     res.status(201).json({ status: 'success', data: review });

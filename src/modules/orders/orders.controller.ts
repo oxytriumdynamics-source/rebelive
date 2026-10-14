@@ -55,6 +55,17 @@ export async function placeOrder(req: Request, res: Response, next: NextFunction
       notes?: string;
     };
 
+    if (!shippingAddressId) {
+      throw new ValidationError('Shipping address is required');
+    }
+
+    const address = await prisma.address.findFirst({
+      where: { id: shippingAddressId, userId: uid(req) },
+    });
+    if (!address) {
+      throw new ValidationError('Invalid or unauthorized shipping address selected');
+    }
+
     const cart = await prisma.cart.findFirst({
       where: { userId: uid(req) },
       include: { items: { include: { variant: true, product: true, bundle: true } }, coupon: true },
@@ -79,9 +90,11 @@ export async function placeOrder(req: Request, res: Response, next: NextFunction
       }
     }
 
-    const taxAmount = (subtotal - discountAmount) * 0.18;
+    discountAmount = Math.min(subtotal, Math.max(0, discountAmount));
+    const taxableAmount = Math.max(0, subtotal - discountAmount);
+    const taxAmount = Math.round(taxableAmount * 0.18 * 100) / 100;
     const shippingAmount = subtotal >= 500 ? 0 : 60;
-    const total = subtotal - discountAmount + taxAmount + shippingAmount;
+    const total = Math.max(0, Math.round((taxableAmount + taxAmount + shippingAmount) * 100) / 100);
 
     const order = await prisma.$transaction(async (tx) => {
       const newOrder = await tx.order.create({

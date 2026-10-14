@@ -2,6 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import * as adminController from './admin.controller';
 import { authenticate, requireAdmin, requireSuperAdmin } from '../auth/auth.middleware';
+import { authLimiter } from '../../shared/middleware/rateLimiter';
 
 const router = Router();
 
@@ -11,11 +12,19 @@ const upload = multer({
   limits: {
     fileSize: 10 * 1024 * 1024, // 10 MB maximum
   },
+  fileFilter: (_req, file, cb) => {
+    const allowedMimes = ['image/jpeg', 'image/png', 'image/webp', 'image/avif'];
+    if (allowedMimes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only JPEG, PNG, WEBP, and AVIF images are permitted.'));
+    }
+  },
 });
 
 // ─── Public Admin Authentication (Standard 2-Step Email + Password + OTP) ─────
-router.post('/login-request', adminController.adminLoginRequest);
-router.post('/login-verify-otp', adminController.adminVerifyOtp);
+router.post('/login-request', authLimiter, adminController.adminLoginRequest);
+router.post('/login-verify-otp', authLimiter, adminController.adminVerifyOtp);
 
 // ─── Protected Routes (Requires Auth + ADMIN / SUPERADMIN Role) ────
 router.use(authenticate, requireAdmin);

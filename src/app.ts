@@ -30,12 +30,31 @@ app.set('trust proxy', 1);
 
 // ─── Security ─────────────────────────────────────────
 app.use(helmet());
+const allowedOrigins =
+  env.NODE_ENV === 'production'
+    ? [env.CLIENT_URL].filter(Boolean)
+    : [env.CLIENT_URL, 'http://localhost:3000', 'http://localhost:5173'].filter(Boolean);
+
 app.use(
   cors({
-    origin: [env.CLIENT_URL, 'http://localhost:3000', 'http://localhost:5173'],
+    origin: (origin, callback) => {
+      // Allow server-to-server or non-browser tools (curl, postman, server webhooks)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error(`Origin ${origin} not allowed by CORS`));
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-session-id'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'x-session-id',
+      'x-api-key',
+      'x-api-hmac-sha256',
+      'x-fastrr-signature',
+    ],
   }),
 );
 

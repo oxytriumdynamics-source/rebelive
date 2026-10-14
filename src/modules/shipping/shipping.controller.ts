@@ -1,9 +1,10 @@
+import crypto from 'crypto';
 import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../../config/database';
 import { env } from '../../config/env';
 import { shiprocketService } from './shiprocket.service';
-import { ValidationError, NotFoundError } from '../../shared/errors/AppError';
+import { ValidationError, NotFoundError, UnauthorizedError } from '../../shared/errors/AppError';
 import { generateOrderNumber } from '../../shared/utils/generateOrderNumber';
 import type { PaymentMethod, OrderStatus } from '@prisma/client';
 
@@ -655,8 +656,13 @@ export async function handleShiprocketWebhook(req: Request, res: Response, next:
   try {
     const apiKey = (req.headers['x-api-key'] || req.headers['authorization']) as string | undefined;
     if (env.SR_WEBHOOK_TOKEN && env.SR_WEBHOOK_TOKEN !== 'change-me') {
-      if (apiKey !== env.SR_WEBHOOK_TOKEN) {
-        console.warn('⚠️ Shiprocket webhook token mismatch received:', apiKey);
+      if (!apiKey) {
+        throw new UnauthorizedError('Missing Shiprocket webhook authentication token');
+      }
+      const bufA = Buffer.from(apiKey);
+      const bufB = Buffer.from(env.SR_WEBHOOK_TOKEN);
+      if (bufA.length !== bufB.length || !crypto.timingSafeEqual(bufA, bufB)) {
+        throw new UnauthorizedError('Invalid Shiprocket webhook authentication token');
       }
     }
 
@@ -683,7 +689,6 @@ export async function handleShiprocketWebhook(req: Request, res: Response, next:
     });
 
     if (!order) {
-      console.log(`[Shiprocket Webhook] Order not located for identifier: ${orderId || awb}`);
       res.status(200).json({ status: 'success', message: 'Webhook received (order not in database)' });
       return;
     }
@@ -723,8 +728,6 @@ export async function handleShiprocketWebhook(req: Request, res: Response, next:
       },
     });
 
-    console.log(`[Shiprocket Webhook] Updated order ${order.orderNumber} to ${mappedStatus}`);
-
     res.status(200).json({
       status: 'success',
       message: 'Shiprocket tracking webhook processed successfully',
@@ -748,10 +751,13 @@ export async function handleFastrrWebhook(req: Request, res: Response, next: Nex
       (req.headers['x-api-hmac-sha256'] as string) ||
       (req.headers['x-fastrr-signature'] as string);
 
-    if (signatureHeader && env.SR_CHECKOUT_API_SECRET) {
+    if (env.SR_CHECKOUT_API_SECRET) {
+      if (!signatureHeader) {
+        throw new UnauthorizedError('Missing Fastrr webhook signature header');
+      }
       const isValid = shiprocketService.verifyFastrrSignature(JSON.stringify(req.body), signatureHeader);
       if (!isValid) {
-        console.warn('⚠️ Fastrr webhook signature verification failed');
+        throw new UnauthorizedError('Invalid Fastrr webhook signature');
       }
     }
 

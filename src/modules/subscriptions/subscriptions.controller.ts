@@ -41,9 +41,21 @@ export async function createSubscription(req: Request, res: Response, next: Next
       addressId: string;
     };
 
+    if (!addressId) {
+      throw new ValidationError('Shipping address is required');
+    }
+
+    const address = await prisma.address.findFirst({
+      where: { id: addressId, userId: uid(req) },
+    });
+    if (!address) {
+      throw new ValidationError('Invalid or unauthorized shipping address selected');
+    }
+
     const plan = await prisma.subscriptionPlan.findUnique({ where: { id: planId } });
     if (!plan || !plan.isActive) throw new NotFoundError('Subscription plan');
 
+    const safeQty = Math.min(50, Math.max(1, Math.floor(quantity ?? 1)));
     const nextDelivery = calculateNextDelivery(plan.frequency);
 
     const subscription = await prisma.subscription.create({
@@ -51,7 +63,7 @@ export async function createSubscription(req: Request, res: Response, next: Next
         userId: uid(req),
         planId,
         variantId,
-        quantity: quantity ?? 1,
+        quantity: safeQty,
         status: 'ACTIVE',
         nextDeliveryAt: nextDelivery,
         addressId,

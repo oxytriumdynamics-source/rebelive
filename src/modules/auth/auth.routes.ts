@@ -8,6 +8,8 @@ import {
   loginSchema,
   sendOtpSchema,
   verifyOtpSchema,
+  forgotPasswordSchema,
+  forgotPasswordVerifySchema,
 } from './auth.validator';
 
 const router = Router();
@@ -47,21 +49,31 @@ router.post('/verify-otp', authLimiter, validate(verifyOtpSchema), authControlle
  * @desc    Request 6-digit OTP to reset forgotten password
  * @access  Public
  */
-router.post('/forgot-password-request', authLimiter, authController.forgotPasswordRequest);
+router.post(
+  '/forgot-password-request',
+  authLimiter,
+  validate(forgotPasswordSchema),
+  authController.forgotPasswordRequest,
+);
 
 /**
  * @route   POST /api/v1/auth/forgot-password-verify
  * @desc    Verify OTP and set new password
  * @access  Public
  */
-router.post('/forgot-password-verify', authLimiter, authController.forgotPasswordVerify);
+router.post(
+  '/forgot-password-verify',
+  authLimiter,
+  validate(forgotPasswordVerifySchema),
+  authController.forgotPasswordVerify,
+);
 
 /**
  * @route   POST /api/v1/auth/refresh
  * @desc    Refresh access token using refresh token (cookie or body)
  * @access  Public
  */
-router.post('/refresh', authController.refresh);
+router.post('/refresh', authLimiter, authController.refresh);
 
 // ─── Google OAuth Routes ───────────────────────────────
 

@@ -22,3 +22,14 @@ export const authLimiter = rateLimit({
     message: 'Too many authentication attempts, please try again in 15 minutes.',
   },
 });
+
+export const contactFormLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    status: 'error',
+    message: 'Too many form submissions. Please try again in 15 minutes.',
+  },
+});

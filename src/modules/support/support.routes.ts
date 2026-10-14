@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import * as supportController from './support.controller';
 import { authenticate } from '../auth/auth.middleware';
+import { contactFormLimiter } from '../../shared/middleware/rateLimiter';
 
 const router = Router();
 
@@ -8,9 +9,9 @@ const router = Router();
 router.get('/faqs', supportController.getFAQs);
 router.patch('/faqs/:id/view', supportController.incrementFAQView);
 
-// Public Contact & Corporate Query routes
-router.post('/contact-query', supportController.submitContactQuery);
-router.post('/corporate-query', supportController.submitCorporateQuery);
+// Public Contact & Corporate Query routes (Rate limited against bot spam)
+router.post('/contact-query', contactFormLimiter, supportController.submitContactQuery);
+router.post('/corporate-query', contactFormLimiter, supportController.submitCorporateQuery);
 
 // Protected ticket routes
 router.get('/tickets', authenticate, supportController.getTickets);

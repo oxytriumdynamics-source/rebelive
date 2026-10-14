@@ -234,8 +234,10 @@ export async function verifyOtp(
     throw new BadRequestError('OTP has expired. Please request a new one.');
   }
 
-  const submitted = crypto.createHash('sha256').update(input.otp).digest('hex');
-  if (submitted !== user.otpCode) {
+  const submitted = crypto.createHash('sha256').update(input.otp.trim()).digest('hex');
+  const userOtpBuf = Buffer.from(user.otpCode);
+  const submittedBuf = Buffer.from(submitted);
+  if (userOtpBuf.length !== submittedBuf.length || !crypto.timingSafeEqual(userOtpBuf, submittedBuf)) {
     throw new UnauthorizedError('Invalid OTP. Please check and try again.');
   }
 
@@ -304,7 +306,7 @@ export async function forgotPasswordRequest(email: string): Promise<void> {
     logger.warn(`Mailer error for password reset OTP dispatch to ${user.email}: ${mailErr}`);
   }
 
-  logger.info(`[Auth] Password reset OTP sent to: ${user.email} -> ${otp}`);
+  logger.info(`[Auth] Password reset OTP sent to: ${user.email}`);
 }
 
 export async function forgotPasswordVerify(
@@ -329,7 +331,9 @@ export async function forgotPasswordVerify(
   }
 
   const submittedHash = crypto.createHash('sha256').update(cleanOtp).digest('hex');
-  if (user.otpCode !== submittedHash) {
+  const userOtpBuf = Buffer.from(user.otpCode);
+  const submittedBuf = Buffer.from(submittedHash);
+  if (userOtpBuf.length !== submittedBuf.length || !crypto.timingSafeEqual(userOtpBuf, submittedBuf)) {
     throw new UnauthorizedError('Invalid verification code.');
   }
 
@@ -347,6 +351,7 @@ export async function forgotPasswordVerify(
       otpExpiry: null,
       emailVerified: true,
       lastLoginAt: new Date(),
+      refreshTokens: [], // Revoke active sessions on password reset
     },
   });
 

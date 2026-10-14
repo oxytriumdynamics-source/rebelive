@@ -1,8 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../../config/database';
-import { NotFoundError } from '../../shared/errors/AppError';
+import { NotFoundError, ValidationError } from '../../shared/errors/AppError';
 import { getPagination, buildPaginationResult } from '../../shared/types';
-import { hashPassword } from '../../shared/utils/password';
+import { hashPassword, verifyPassword } from '../../shared/utils/password';
 import { formatRebelId } from '../../shared/utils/rebelId';
 
 const userId = (req: Request): string => req.user!.id;
@@ -52,10 +52,43 @@ export async function updateProfile(req: Request, res: Response, next: NextFunct
 // PATCH /api/v1/users/change-password
 export async function changePassword(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { password } = req.body as { password: string };
-    const passwordHash = await hashPassword(password);
-    await prisma.user.update({ where: { id: userId(req) }, data: { passwordHash } });
-    res.json({ status: 'success', message: 'Password updated' });
+    const { currentPassword, newPassword, password } = req.body as {
+      currentPassword?: string;
+      newPassword?: string;
+      password?: string;
+    };
+    const targetPassword = newPassword || password;
+
+    if (!targetPassword || typeof targetPassword !== 'string' || targetPassword.length < 8) {
+      throw new ValidationError('New password must be at least 8 characters long');
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: userId(req) } });
+    if (!user) throw new NotFoundError('User');
+
+    // If local password exists, verify current password
+    if (user.passwordHash) {
+      if (!currentPassword) {
+        throw new ValidationError('Current password is required');
+      }
+      const isMatch = await verifyPassword(currentPassword, user.passwordHash);
+      if (!isMatch) {
+        throw new ValidationError('Current password does not match');
+      }
+    }
+
+    const passwordHash = await hashPassword(targetPassword);
+
+    // Invalidate existing sessions on password change to revoke stolen tokens
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash,
+        refreshTokens: [],
+      },
+    });
+
+    res.json({ status: 'success', message: 'Password updated successfully. Other active sessions revoked.' });
   } catch (err) { next(err); }
 }
 
@@ -98,12 +131,17 @@ export async function createAddress(req: Request, res: Response, next: NextFunct
 export async function updateAddress(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const id = paramId(req);
+    const existing = await prisma.address.findFirst({
+      where: { id, userId: userId(req) },
+    });
+    if (!existing) throw new NotFoundError('Address');
+
     if (req.body.isDefault) {
       await prisma.address.updateMany({ where: { userId: userId(req) }, data: { isDefault: false } });
     }
     const { id: _ignoreId, userId: _ignoreUserId, ...safeUpdate } = req.body as Record<string, unknown>;
     const address = await prisma.address.update({
-      where: { id, userId: userId(req) },
+      where: { id },
       data: safeUpdate,
     });
     res.json({ status: 'success', data: address });
@@ -113,7 +151,13 @@ export async function updateAddress(req: Request, res: Response, next: NextFunct
 // DELETE /api/v1/users/addresses/:id
 export async function deleteAddress(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    await prisma.address.delete({ where: { id: paramId(req), userId: userId(req) } });
+    const id = paramId(req);
+    const existing = await prisma.address.findFirst({
+      where: { id, userId: userId(req) },
+    });
+    if (!existing) throw new NotFoundError('Address');
+
+    await prisma.address.delete({ where: { id } });
     res.json({ status: 'success', message: 'Address deleted' });
   } catch (err) { next(err); }
 }
@@ -133,8 +177,14 @@ export async function getNotifications(req: Request, res: Response, next: NextFu
 // PATCH /api/v1/users/notifications/:id/read
 export async function markNotificationRead(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
+    const id = paramId(req);
+    const existing = await prisma.notification.findFirst({
+      where: { id, userId: userId(req) },
+    });
+    if (!existing) throw new NotFoundError('Notification');
+
     await prisma.notification.update({
-      where: { id: paramId(req), userId: userId(req) },
+      where: { id },
       data: { isRead: true, readAt: new Date() },
     });
     res.json({ status: 'success', message: 'Notification marked as read' });
@@ -172,7 +222,15 @@ export async function addToWishlist(req: Request, res: Response, next: NextFunct
 // DELETE /api/v1/users/wishlist/:itemId
 export async function removeFromWishlist(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    await prisma.wishlistItem.delete({ where: { id: paramId(req, 'itemId') } });
+    const itemId = paramId(req, 'itemId');
+    const item = await prisma.wishlistItem.findUnique({
+      where: { id: itemId },
+      include: { wishlist: true },
+    });
+    if (!item || item.wishlist.userId !== userId(req)) {
+      throw new NotFoundError('Wishlist item');
+    }
+    await prisma.wishlistItem.delete({ where: { id: itemId } });
     res.json({ status: 'success', message: 'Item removed from wishlist' });
   } catch (err) { next(err); }
 }

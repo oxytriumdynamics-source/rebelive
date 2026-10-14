@@ -413,12 +413,14 @@ class ShiprocketService {
    * Fastrr Checkout HMAC verification helper
    */
   verifyFastrrSignature(payloadString: string, signature: string): boolean {
+    if (!signature || typeof signature !== 'string') return false;
     const expected = this.generateFastrrSignature(payloadString);
-    try {
-      return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
-    } catch {
-      return expected === signature;
+    const bufExpected = Buffer.from(expected);
+    const bufSig = Buffer.from(signature);
+    if (bufExpected.length !== bufSig.length) {
+      return false;
     }
+    return crypto.timingSafeEqual(bufExpected, bufSig);
   }
 }
 

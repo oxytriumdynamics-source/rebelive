@@ -38,24 +38,7 @@ export async function adminLoginRequest(req: Request, res: Response, next: NextF
     }
 
     const cleanEmail = email.trim().toLowerCase();
-    let user = await prisma.user.findUnique({ where: { email: cleanEmail } });
-
-    // Auto-bootstrap master SUPERADMIN account if missing
-    if (!user && cleanEmail === 'oxytriumdynamics@gmail.com') {
-      const hashed = await hashPassword(password);
-      user = await prisma.user.create({
-        data: {
-          email: cleanEmail,
-          firstName: 'Oxytrium',
-          lastName: 'Dynamics',
-          role: 'SUPERADMIN',
-          passwordHash: hashed,
-          emailVerified: true,
-          authProvider: 'local',
-        },
-      });
-      logger.info(`[ADMIN INIT] Initialized Super Admin account for ${cleanEmail}`);
-    }
+    const user = await prisma.user.findUnique({ where: { email: cleanEmail } });
 
     if (!user || !user.passwordHash) {
       throw new UnauthorizedError('Invalid credentials');
@@ -85,15 +68,14 @@ export async function adminLoginRequest(req: Request, res: Response, next: NextF
     try {
       await sendMail({
         to: user.email,
-        subject: `[ROOT SECURITY] ${otp} is your Admin Panel Login OTP`,
+        subject: `[SECURITY] Your Admin Panel Login Verification Code`,
         html: otpEmailHtml({ firstName: user.firstName, otp }),
       });
     } catch (mailErr) {
       logger.warn(`Mailer error for admin OTP dispatch to ${user.email}: ${mailErr}`);
     }
 
-    // Log OTP on server terminal for operator reference (never exposed in client response)
-    logger.info(`[ADMIN 2FA DISPATCH] Security verification code for ${user.email} is: ${otp}`);
+    logger.info(`[ADMIN 2FA DISPATCH] Security verification code dispatched to ${user.email}`);
 
     res.status(200).json({
       status: 'success',
@@ -136,7 +118,9 @@ export async function adminVerifyOtp(req: Request, res: Response, next: NextFunc
     }
 
     const submittedHash = crypto.createHash('sha256').update(cleanOtp).digest('hex');
-    const isHashMatch = user.otpCode === submittedHash;
+    const userOtpBuf = Buffer.from(user.otpCode);
+    const submittedBuf = Buffer.from(submittedHash);
+    const isHashMatch = userOtpBuf.length === submittedBuf.length && crypto.timingSafeEqual(userOtpBuf, submittedBuf);
     const isExpired = new Date() > user.otpExpiry;
 
     if (!isHashMatch) {
@@ -147,7 +131,13 @@ export async function adminVerifyOtp(req: Request, res: Response, next: NextFunc
       throw new UnauthorizedError('OTP code has expired. Please request a new one.');
     }
 
-    // Clear OTP
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+
+    // Clear OTP and record session
+    const existingTokens = user.refreshTokens ?? [];
+    const tokens = [...existingTokens.slice(-4), refreshToken];
+
     await prisma.user.update({
       where: { id: user.id },
       data: {
@@ -155,13 +145,11 @@ export async function adminVerifyOtp(req: Request, res: Response, next: NextFunc
         otpExpiry: null,
         lastLoginAt: new Date(),
         emailVerified: true,
+        refreshTokens: tokens,
       },
     });
 
-    const accessToken = generateAccessToken(user);
-    const refreshToken = generateRefreshToken(user);
-
-    const { passwordHash, refreshTokens, googleId, otpCode, ...safeUser } = user;
+    const { passwordHash, refreshTokens: _r, googleId, otpCode, ...safeUser } = user;
 
     res.status(200).json({
       status: 'success',
@@ -826,16 +814,35 @@ export async function uploadProductImage(req: Request, res: Response, next: Next
     let source: Buffer | string | undefined;
 
     if (req.file?.buffer) {
+      const allowedMimes = ['image/jpeg', 'image/png', 'image/webp', 'image/avif'];
+      if (!allowedMimes.includes(req.file.mimetype)) {
+        throw new ValidationError('Invalid image format. Only JPEG, PNG, WEBP, and AVIF are supported.');
+      }
       source = req.file.buffer;
     } else if (req.body?.image || req.body?.file || req.body?.dataUrl) {
-      source = (req.body.image || req.body.file || req.body.dataUrl) as string;
+      const rawStr = (req.body.image || req.body.file || req.body.dataUrl) as string;
+      if (typeof rawStr !== 'string') {
+        throw new ValidationError('Invalid image data format');
+      }
+      if (rawStr.startsWith('data:')) {
+        const isValidDataUri = /^data:image\/(jpeg|png|webp|avif);base64,/i.test(rawStr);
+        if (!isValidDataUri) {
+          throw new ValidationError('Invalid base64 image data URI. Only JPEG, PNG, WEBP, and AVIF supported.');
+        }
+      }
+      source = rawStr;
     }
 
     if (!source) {
       throw new ValidationError('No image file or base64 data provided for upload');
     }
 
-    const folder = (req.body?.folder as string) || 'rebelive/products';
+    const rawFolder = (req.body?.folder as string) || 'rebelive/products';
+    const cleanSubfolder = String(rawFolder)
+      .replace(/[^a-zA-Z0-9_\-]/g, '')
+      .replace(/^rebelive/, '');
+    const folder = `rebelive/${cleanSubfolder || 'products'}`;
+
     const uploadResult = await uploadToCloudinary(source, { folder });
 
     res.status(200).json({
