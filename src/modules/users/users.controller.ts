@@ -205,14 +205,18 @@ export async function getWishlist(req: Request, res: Response, next: NextFunctio
 // POST /api/v1/users/wishlist
 export async function addToWishlist(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { productId, variantId } = req.body as { productId: string; variantId: string };
+    const { productId, variantId } = req.body as { productId: string | number; variantId: string | number };
+    const pId = /^\d+$/.test(String(productId)) ? BigInt(productId) : null;
+    const vId = /^\d+$/.test(String(variantId)) ? BigInt(variantId) : null;
+    if (!pId || !vId) throw new ValidationError('Valid numeric productId and variantId are required');
+
     let wishlist = await prisma.wishlist.findUnique({ where: { userId: userId(req) } });
     if (!wishlist) {
       wishlist = await prisma.wishlist.create({ data: { userId: userId(req) } });
     }
     const item = await prisma.wishlistItem.upsert({
-      where: { wishlistId_variantId: { wishlistId: wishlist.id, variantId } },
-      create: { wishlistId: wishlist.id, productId, variantId },
+      where: { wishlistId_variantId: { wishlistId: wishlist.id, variantId: vId } },
+      create: { wishlistId: wishlist.id, productId: pId, variantId: vId },
       update: {},
     });
     res.status(201).json({ status: 'success', data: item });

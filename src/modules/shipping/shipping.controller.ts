@@ -17,19 +17,19 @@ const isMongoId = (str?: string | null): boolean => {
 };
 
 async function resolveProductAndVariant(item: {
-  productId?: string;
-  variantId?: string;
+  productId?: string | number;
+  variantId?: string | number;
   slug?: string;
   packSize?: number;
 }) {
   let variant: any = null;
   let product: any = null;
 
-  // 1. Try finding by variantId if it is a valid 24-hex ObjectId
-  if (item.variantId && isMongoId(item.variantId)) {
+  // 1. Try finding by variantId if numeric or valid
+  if (item.variantId !== undefined && item.variantId !== null && /^\d+$/.test(String(item.variantId))) {
     try {
       variant = await prisma.productVariant.findUnique({
-        where: { id: item.variantId },
+        where: { id: BigInt(item.variantId) },
         include: { product: true },
       });
       if (variant) {
@@ -38,18 +38,18 @@ async function resolveProductAndVariant(item: {
     } catch {}
   }
 
-  // 2. Try finding product by valid ObjectId if productId is a 24-hex string
-  if (!product && item.productId && isMongoId(item.productId)) {
+  // 2. Try finding product by numeric ID
+  if (!product && item.productId !== undefined && item.productId !== null && /^\d+$/.test(String(item.productId))) {
     try {
       product = await prisma.product.findUnique({
-        where: { id: item.productId },
+        where: { id: BigInt(item.productId) },
         include: { variants: true },
       });
     } catch {}
   }
 
   // 3. Try resolving product by slug or name (e.g. "aviva", "apex", "capella", "variety")
-  const slugCandidate = (item.slug || item.productId || '').trim().toLowerCase();
+  const slugCandidate = String(item.slug || item.productId || '').trim().toLowerCase();
   if (!product && slugCandidate) {
     product = await prisma.product.findFirst({
       where: {
@@ -136,8 +136,8 @@ export async function initiateFastrrCheckout(req: Request, res: Response, next: 
 
     // Resolve variants and price
     const enrichedItems: Array<{
-      productId: string;
-      variantId: string;
+      productId: string | number;
+      variantId: string | number;
       name: string;
       flavor: string;
       sku: string;
@@ -157,8 +157,8 @@ export async function initiateFastrrCheckout(req: Request, res: Response, next: 
       const sku = variant ? variant.sku : `RBL-${(item.slug || product?.slug || 'CAN').toUpperCase()}-${item.packSize || 12}`;
       const name = product ? product.name : item.name || 'REBELIVE Energy';
       const flavor = product?.flavor || item.flavor || 'Signature';
-      const prodId = product ? product.id : item.productId || 'fallback-id';
-      const varId = variant ? variant.id : item.variantId || 'fallback-variant-id';
+      const prodId = product ? Number(product.id) : (item.productId ?? 1);
+      const varId = variant ? Number(variant.id) : (item.variantId ?? 101);
       const qty = Math.max(1, item.quantity || 1);
       const totalItemPrice = unitPrice * qty;
 
@@ -339,8 +339,8 @@ export async function completeFastrrCheckout(req: Request, res: Response, next: 
     // 3. Resolve Items and Prices from DB
     let subtotal = 0;
     const finalOrderItems: Array<{
-      productId: string;
-      variantId: string;
+      productId: bigint;
+      variantId: bigint;
       productName: string;
       variantName: string;
       sku: string;

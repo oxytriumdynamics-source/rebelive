@@ -55,11 +55,15 @@ export async function addToCart(req: Request, res: Response, next: NextFunction)
     }
 
     const parsedQty = Math.min(100, Math.max(1, Math.floor(Number(quantity) || 1)));
+    const varId = /^\d+$/.test(String(variantId)) ? BigInt(variantId) : null;
+    if (!varId) throw new ValidationError('Valid numeric variantId is required');
 
     // Verify variant exists and has stock
-    const variant = await prisma.productVariant.findUnique({ where: { id: variantId } });
+    const variant = await prisma.productVariant.findUnique({ where: { id: varId } });
     if (!variant || !variant.isActive) throw new NotFoundError('Product variant');
     if (variant.stockQty < parsedQty) throw new ValidationError('Insufficient stock');
+
+    const prodId = variant.productId;
 
     let cart = await prisma.cart.findFirst({
       where: userId ? { userId } : { sessionId },
@@ -73,7 +77,7 @@ export async function addToCart(req: Request, res: Response, next: NextFunction)
 
     // Upsert cart item
     const existing = await prisma.cartItem.findFirst({
-      where: { cartId: cart.id, variantId, bundleId: bundleId ?? null },
+      where: { cartId: cart.id, variantId: varId, bundleId: bundleId ?? null },
     });
 
     if (existing) {
@@ -84,7 +88,7 @@ export async function addToCart(req: Request, res: Response, next: NextFunction)
       });
     } else {
       await prisma.cartItem.create({
-        data: { cartId: cart.id, productId, variantId, bundleId: bundleId ?? null, quantity: parsedQty },
+        data: { cartId: cart.id, productId: prodId, variantId: varId, bundleId: bundleId ?? null, quantity: parsedQty },
       });
     }
 

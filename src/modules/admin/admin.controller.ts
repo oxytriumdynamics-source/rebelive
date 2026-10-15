@@ -541,9 +541,15 @@ export async function getProducts(req: Request, res: Response, next: NextFunctio
 // GET /api/v1/admin/products/:id
 export async function getProduct(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const id = paramStr(req);
-    const product = await prisma.product.findUnique({
-      where: { id },
+    const idOrSlug = paramStr(req);
+    const isNumeric = /^\d+$/.test(idOrSlug);
+    const product = await prisma.product.findFirst({
+      where: {
+        OR: [
+          { slug: idOrSlug.toLowerCase() },
+          ...(isNumeric ? [{ id: BigInt(idOrSlug) }] : []),
+        ],
+      },
       include: {
         variants: { orderBy: { price: 'asc' } },
         images: { orderBy: { sortOrder: 'asc' } },
@@ -603,8 +609,13 @@ export async function createProduct(req: Request, res: Response, next: NextFunct
       }
     }
 
+    // Generate unique Long ID
+    const lastProduct = await prisma.product.findFirst({ orderBy: { id: 'desc' } });
+    const newProductId = (lastProduct?.id ? BigInt(lastProduct.id) + 1n : 1n);
+
     const product = await prisma.product.create({
       data: {
+        id: newProductId,
         name,
         slug: cleanSlug,
         displayTitle: displayTitle || name,
@@ -634,10 +645,14 @@ export async function createProduct(req: Request, res: Response, next: NextFunct
     });
 
     // Create variants if provided
+    const lastVariant = await prisma.productVariant.findFirst({ orderBy: { id: 'desc' } });
+    let nextVarId = (lastVariant?.id ? BigInt(lastVariant.id) + 1n : 100n);
+
     if (Array.isArray(variants) && variants.length > 0) {
       for (const v of variants) {
         await prisma.productVariant.create({
           data: {
+            id: nextVarId++,
             productId: product.id,
             sku: v.sku || `RBL-${cleanSlug.toUpperCase()}-${v.packSize || v.sizeMl || 12}`,
             name: v.name || `${product.name} · ${v.packSize || 12}-Pack`,
@@ -654,6 +669,7 @@ export async function createProduct(req: Request, res: Response, next: NextFunct
       // Create default 12-pack variant
       await prisma.productVariant.create({
         data: {
+          id: nextVarId++,
           productId: product.id,
           sku: `RBL-${cleanSlug.toUpperCase()}-12PK`,
           name: `${product.name} · 12-Pack Case`,
@@ -681,7 +697,19 @@ export async function createProduct(req: Request, res: Response, next: NextFunct
 // PATCH /api/v1/admin/products/:id
 export async function updateProduct(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const id = paramStr(req);
+    const idOrSlug = paramStr(req);
+    const isNumeric = /^\d+$/.test(idOrSlug);
+    const existingProduct = await prisma.product.findFirst({
+      where: {
+        OR: [
+          { slug: idOrSlug.toLowerCase() },
+          ...(isNumeric ? [{ id: BigInt(idOrSlug) }] : []),
+        ],
+      },
+    });
+    if (!existingProduct) throw new NotFoundError('Product');
+    const targetId = existingProduct.id;
+
     const { variants, ...productData } = req.body;
 
     // Clean boolean fields
@@ -707,7 +735,7 @@ export async function updateProduct(req: Request, res: Response, next: NextFunct
     }
 
     const updated = await prisma.product.update({
-      where: { id },
+      where: { id: targetId },
       data: productData,
     });
 
@@ -745,10 +773,13 @@ export async function updateProduct(req: Request, res: Response, next: NextFunct
 
     // If variants / packs were updated or created
     if (Array.isArray(variants)) {
+      const lastVar = await prisma.productVariant.findFirst({ orderBy: { id: 'desc' } });
+      let nextVarId = (lastVar?.id ? BigInt(lastVar.id) + 1n : 100n);
+
       for (const v of variants) {
-        if (v.id && !v.id.toString().startsWith('new-')) {
+        if (v.id && /^\d+$/.test(String(v.id))) {
           await prisma.productVariant.update({
-            where: { id: v.id },
+            where: { id: BigInt(v.id) },
             data: {
               sku: v.sku ?? undefined,
               price: v.price !== undefined ? Number(v.price) : undefined,
@@ -765,7 +796,8 @@ export async function updateProduct(req: Request, res: Response, next: NextFunct
           const cleanSku = v.sku || `RBL-${(updated.slug || 'VAR').toUpperCase()}-${Date.now().toString().slice(-4)}`;
           await prisma.productVariant.create({
             data: {
-              productId: id,
+              id: nextVarId++,
+              productId: targetId,
               sku: cleanSku,
               name: v.name || `${updated.name} · Pack`,
               sizeMl: v.sizeMl ? Number(v.sizeMl) : 250,
@@ -781,7 +813,7 @@ export async function updateProduct(req: Request, res: Response, next: NextFunct
     }
 
     const fullProduct = await prisma.product.findUnique({
-      where: { id },
+      where: { id: targetId },
       include: { variants: true, images: true, category: true },
     });
 
@@ -794,9 +826,19 @@ export async function updateProduct(req: Request, res: Response, next: NextFunct
 // DELETE /api/v1/admin/products/:id
 export async function deleteProduct(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const id = paramStr(req);
+    const idOrSlug = paramStr(req);
+    const isNumeric = /^\d+$/.test(idOrSlug);
+    const existingProduct = await prisma.product.findFirst({
+      where: {
+        OR: [
+          { slug: idOrSlug.toLowerCase() },
+          ...(isNumeric ? [{ id: BigInt(idOrSlug) }] : []),
+        ],
+      },
+    });
+    if (!existingProduct) throw new NotFoundError('Product');
     await prisma.product.update({
-      where: { id },
+      where: { id: existingProduct.id },
       data: { isActive: false },
     });
     res.json({ status: 'success', message: 'Product archived / deactivated successfully' });
@@ -1092,7 +1134,10 @@ export async function trackOrderShiprocket(req: Request, res: Response, next: Ne
 export async function updateStock(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const { changeQty, reason, note } = req.body as { changeQty: number; reason: string; note?: string };
-    const variant = await prisma.productVariant.findUnique({ where: { id: paramStr(req, 'variantId') } });
+    const varIdStr = paramStr(req, 'variantId');
+    const varId = /^\d+$/.test(varIdStr) ? BigInt(varIdStr) : null;
+    if (!varId) throw new NotFoundError('Product variant');
+    const variant = await prisma.productVariant.findUnique({ where: { id: varId } });
     if (!variant) throw new NotFoundError('Product variant');
 
     const [updatedVariant] = await prisma.$transaction([

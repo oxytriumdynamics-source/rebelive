@@ -57,12 +57,14 @@ export async function createSubscription(req: Request, res: Response, next: Next
 
     const safeQty = Math.min(50, Math.max(1, Math.floor(quantity ?? 1)));
     const nextDelivery = calculateNextDelivery(plan.frequency);
+    const varId = /^\d+$/.test(String(variantId)) ? BigInt(variantId) : null;
+    if (!varId) throw new ValidationError('Valid numeric variantId is required');
 
     const subscription = await prisma.subscription.create({
       data: {
         userId: uid(req),
         planId,
-        variantId,
+        variantId: varId,
         quantity: safeQty,
         status: 'ACTIVE',
         nextDeliveryAt: nextDelivery,

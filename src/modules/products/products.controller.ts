@@ -55,14 +55,23 @@ export async function getProducts(req: Request, res: Response, next: NextFunctio
       prisma.product.count({ where }),
     ]);
 
-    // Format products so id maps to slug while preserving MongoDB objectId as dbId
+    // Format products so id is long data type (number) and unique, preserving slug and variants
     const formattedData = data.map((p) => ({
       ...p,
-      id: p.slug,
-      dbId: p.id,
+      id: Number(p.id),
+      slug: p.slug,
+      variants: p.variants.map((v) => ({
+        ...v,
+        id: Number(v.id),
+        productId: Number(v.productId),
+      })),
     }));
 
-    res.json({ status: 'success', ...buildPaginationResult(formattedData, total, page, limit) });
+    res.json({
+      status: 'success',
+      products: formattedData,
+      ...buildPaginationResult(formattedData, total, page, limit),
+    });
   } catch (err) { next(err); }
 }
 
@@ -70,13 +79,13 @@ export async function getProducts(req: Request, res: Response, next: NextFunctio
 export async function getProduct(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const slugOrId = paramStr(req, 'slug');
-    const isObjectId = /^[0-9a-fA-F]{24}$/.test(slugOrId);
+    const isNumeric = /^\d+$/.test(slugOrId);
 
     const product = await prisma.product.findFirst({
       where: {
         OR: [
           { slug: slugOrId.toLowerCase() },
-          ...(isObjectId ? [{ id: slugOrId }] : []),
+          ...(isNumeric ? [{ id: BigInt(slugOrId) }] : []),
         ],
       },
       include: {
@@ -96,11 +105,16 @@ export async function getProduct(req: Request, res: Response, next: NextFunction
 
     const formattedProduct = {
       ...product,
-      id: product.slug,
-      dbId: product.id,
+      id: Number(product.id),
+      slug: product.slug,
+      variants: product.variants.map((v) => ({
+        ...v,
+        id: Number(v.id),
+        productId: Number(v.productId),
+      })),
     };
 
-    res.json({ status: 'success', data: formattedProduct });
+    res.json({ status: 'success', data: formattedProduct, product: formattedProduct });
   } catch (err) { next(err); }
 }
 
@@ -138,12 +152,12 @@ export async function createReview(req: Request, res: Response, next: NextFuncti
     const { rating, title, body, orderId } = req.body as { rating: string | number; title?: string; body: string; orderId?: string };
 
     const idOrSlug = paramStr(req);
-    const isObjectId = /^[0-9a-fA-F]{24}$/.test(idOrSlug);
+    const isNumeric = /^\d+$/.test(idOrSlug);
     const product = await prisma.product.findFirst({
       where: {
         OR: [
           { slug: idOrSlug.toLowerCase() },
-          ...(isObjectId ? [{ id: idOrSlug }] : []),
+          ...(isNumeric ? [{ id: BigInt(idOrSlug) }] : []),
         ],
       },
     });

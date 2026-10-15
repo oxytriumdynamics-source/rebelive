@@ -1,6 +1,12 @@
 import { PrismaClient } from '@prisma/client';
 import { env } from './env';
 
+// Global JSON serialization for BigInt (MongoDB Long types)
+(BigInt.prototype as any).toJSON = function () {
+  const n = Number(this);
+  return Number.isSafeInteger(n) ? n : this.toString();
+};
+
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };

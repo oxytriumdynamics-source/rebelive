@@ -65,6 +65,7 @@
     "@types/passport-google-oauth20": "^2.0.16",
     "@types/passport-jwt": "^4.0.1",
     "@types/uuid": "^10.0.0",
+    "mongodb": "^7.7.0",
     "prisma": "^6.19.3",
     "tsx": "^4.23.12",
     "typescript": "^7.0.2"

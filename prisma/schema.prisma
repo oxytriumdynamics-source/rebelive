@@ -171,13 +171,13 @@ model Tag {
   id           String    @id @default(auto()) @map("_id") @db.ObjectId
   name         String    @unique
   slug         String    @unique
-  productIds   String[]  @map("product_ids") @db.ObjectId
+  productIds   BigInt[]  @map("product_ids") @db.Long
 
   @@map("tags")
 }
 
 model Product {
-  id                   String   @id @default(auto()) @map("_id") @db.ObjectId
+  id                   BigInt   @id @map("_id") @db.Long
   name                 String
   slug                 String   @unique
   displayTitle         String?  @map("display_title")
@@ -234,8 +234,8 @@ model Product {
 }
 
 model ProductVariant {
-  id                String  @id @default(auto()) @map("_id") @db.ObjectId
-  productId         String  @map("product_id") @db.ObjectId
+  id                BigInt  @id @map("_id") @db.Long
+  productId         BigInt  @map("product_id") @db.Long
   sku               String  @unique
   name              String
   sizeMl            Int?    @map("size_ml")
@@ -260,7 +260,7 @@ model ProductVariant {
 
 model ProductImage {
   id        String  @id @default(auto()) @map("_id") @db.ObjectId
-  productId String  @map("product_id") @db.ObjectId
+  productId BigInt  @map("product_id") @db.Long
   url       String
   altText   String? @map("alt_text")
   sortOrder Int     @default(0) @map("sort_order")
@@ -295,8 +295,8 @@ model Bundle {
 model BundleItem {
   id        String @id @default(auto()) @map("_id") @db.ObjectId
   bundleId  String @map("bundle_id") @db.ObjectId
-  productId String @map("product_id") @db.ObjectId
-  variantId String @map("variant_id") @db.ObjectId
+  productId BigInt @map("product_id") @db.Long
+  variantId BigInt @map("variant_id") @db.Long
   quantity  Int
 
   bundle  Bundle         @relation(fields: [bundleId], references: [id], onDelete: Cascade)
@@ -325,7 +325,7 @@ model Subscription {
   id              String             @id @default(auto()) @map("_id") @db.ObjectId
   userId          String             @map("user_id") @db.ObjectId
   planId          String             @map("plan_id") @db.ObjectId
-  variantId       String             @map("variant_id") @db.ObjectId
+  variantId       BigInt             @map("variant_id") @db.Long
   quantity        Int                @default(1)
   status          SubscriptionStatus
   nextDeliveryAt  DateTime           @map("next_delivery_at")
@@ -353,7 +353,7 @@ model PersonalityType {
   colorHex       String   @map("color_hex")
   description    String
   tagline        String?
-  idealProductIds String[] @map("ideal_product_ids") @db.ObjectId
+  idealProductIds BigInt[] @map("ideal_product_ids") @db.Long
   traits         String[]
 
   products        Product[]
@@ -421,8 +421,8 @@ model Cart {
 model CartItem {
   id        String  @id @default(auto()) @map("_id") @db.ObjectId
   cartId    String  @map("cart_id") @db.ObjectId
-  productId String  @map("product_id") @db.ObjectId
-  variantId String  @map("variant_id") @db.ObjectId
+  productId BigInt  @map("product_id") @db.Long
+  variantId BigInt  @map("variant_id") @db.Long
   bundleId  String? @map("bundle_id") @db.ObjectId
   quantity  Int
 
@@ -470,8 +470,8 @@ model Order {
 model OrderItem {
   id          String  @id @default(auto()) @map("_id") @db.ObjectId
   orderId     String  @map("order_id") @db.ObjectId
-  productId   String  @map("product_id") @db.ObjectId
-  variantId   String  @map("variant_id") @db.ObjectId
+  productId   BigInt  @map("product_id") @db.Long
+  variantId   BigInt  @map("variant_id") @db.Long
   bundleId    String? @map("bundle_id") @db.ObjectId
   productName String  @map("product_name")
   variantName String  @map("variant_name")
@@ -569,8 +569,8 @@ model Wishlist {
 model WishlistItem {
   id         String @id @default(auto()) @map("_id") @db.ObjectId
   wishlistId String @map("wishlist_id") @db.ObjectId
-  productId  String @map("product_id") @db.ObjectId
-  variantId  String @map("variant_id") @db.ObjectId
+  productId  BigInt @map("product_id") @db.Long
+  variantId  BigInt @map("variant_id") @db.Long
 
   wishlist Wishlist       @relation(fields: [wishlistId], references: [id], onDelete: Cascade)
   product  Product        @relation(fields: [productId], references: [id])
@@ -585,7 +585,7 @@ model WishlistItem {
 model Review {
   id         String   @id @default(auto()) @map("_id") @db.ObjectId
   userId     String   @map("user_id") @db.ObjectId
-  productId  String   @map("product_id") @db.ObjectId
+  productId  BigInt   @map("product_id") @db.Long
   orderId    String   @map("order_id") @db.ObjectId
   rating     Int
   title      String?
@@ -697,8 +697,8 @@ model Notification {
 
 model InventoryLog {
   id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  productId   String   @map("product_id") @db.ObjectId
-  variantId   String   @map("variant_id") @db.ObjectId
+  productId   BigInt   @map("product_id") @db.Long
+  variantId   BigInt   @map("variant_id") @db.Long
   changeQty   Int      @map("change_qty")
   reason      String
   referenceId String?  @map("reference_id") @db.ObjectId
