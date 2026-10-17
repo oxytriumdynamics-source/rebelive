@@ -258,7 +258,6 @@ export async function getDashboard(req: Request, res: Response, next: NextFuncti
         take: 8,
         include: {
           user: { select: { firstName: true, lastName: true, email: true } },
-          shippingAddress: true,
           items: true,
         },
       }),
@@ -339,7 +338,6 @@ export async function getUsers(req: Request, res: Response, next: NextFunction):
         orderBy: { createdAt: 'desc' },
         include: {
           orders: { select: { id: true, total: true, status: true } },
-          addresses: true,
         },
       }),
       prisma.user.count({ where }),
@@ -364,7 +362,6 @@ export async function getUser(req: Request, res: Response, next: NextFunction): 
       where: { id: paramStr(req) },
       include: {
         orders: { take: 10, orderBy: { createdAt: 'desc' }, include: { items: true, payments: true } },
-        addresses: true,
         preferences: true,
       },
     });
@@ -937,7 +934,6 @@ export async function getOrders(req: Request, res: Response, next: NextFunction)
         include: {
           user: { select: { email: true, firstName: true, lastName: true, phone: true } },
           items: { include: { product: true } },
-          shippingAddress: true,
           payments: true,
           statusHistory: { orderBy: { createdAt: 'desc' } },
         },
@@ -960,7 +956,6 @@ export async function getOrder(req: Request, res: Response, next: NextFunction):
       include: {
         user: { select: { email: true, firstName: true, lastName: true, phone: true } },
         items: { include: { product: true } },
-        shippingAddress: true,
         payments: true,
         statusHistory: { orderBy: { createdAt: 'desc' } },
       },
@@ -998,7 +993,6 @@ export async function updateOrderStatus(req: Request, res: Response, next: NextF
       include: {
         user: true,
         items: true,
-        shippingAddress: true,
         statusHistory: { orderBy: { createdAt: 'desc' } },
       },
     });
@@ -1018,7 +1012,6 @@ export async function dispatchOrderToShiprocket(req: Request, res: Response, nex
       where: { id },
       include: {
         user: true,
-        shippingAddress: true,
         items: true,
         payments: true,
       },
@@ -1028,32 +1021,37 @@ export async function dispatchOrderToShiprocket(req: Request, res: Response, nex
       throw new NotFoundError('Order not found');
     }
 
-    let address: any = order.shippingAddress;
-    if (!address && order.userId) {
-      address = await prisma.address.findFirst({
-        where: { userId: order.userId },
-        orderBy: { isDefault: 'desc' },
-      });
-    }
-
+    const address: any = order.shippingAddress || {};
     const paymentMethod = order.payments?.[0]?.method === 'COD' ? 'COD' : 'Prepaid';
+
+    const custFirstName = (address.billing_customer_name || address.shipping_customer_name || address.firstName || order.user?.firstName || 'Customer').trim();
+    const custLastName = (address.billing_last_name || address.shipping_last_name || address.lastName || order.user?.lastName || 'REBELIVE').trim();
+    const custEmail = (address.billing_email || address.shipping_email || address.email || order.user?.email || 'customer@rebelive.co').trim();
+    const custPhone = (address.billing_phone || address.shipping_phone || address.phone || order.user?.phone || '').trim();
+
+    const line1 = (address.billing_address || address.shipping_address || address.line1 || address.address1 || address.street || address.address || 'Address').trim();
+    const line2 = (address.billing_address_2 || address.shipping_address_2 || address.line2 || address.address2 || '').trim();
+    const city = (address.billing_city || address.shipping_city || address.city || address.district || 'City').trim();
+    const state = (address.billing_state || address.shipping_state || address.state || address.province || 'State').trim();
+    const postalCode = (address.billing_pincode || address.shipping_pincode || address.postalCode || address.pincode || address.zip || '110001').replace(/\D/g, '').slice(0, 6) || '110001';
+    const country = (address.billing_country || address.shipping_country || address.country || 'India').trim();
 
     const shiprocketResult = await shiprocketService.createAdhocOrder({
       orderNumber: order.orderNumber,
       createdAt: order.createdAt,
       customer: {
-        firstName: order.user?.firstName || 'Customer',
-        lastName: order.user?.lastName || 'Rebelive',
-        email: order.user?.email || 'customer@rebelive.co',
-        phone: order.user?.phone || '9999999999',
+        firstName: custFirstName,
+        lastName: custLastName,
+        email: custEmail,
+        phone: custPhone,
       },
       address: {
-        line1: address?.line1 || 'Address on file',
-        line2: address?.line2 || '',
-        city: address?.city || 'Amritsar',
-        state: address?.state || 'Punjab',
-        postalCode: address?.postalCode || '143001',
-        country: address?.country || 'India',
+        line1,
+        line2,
+        city,
+        state,
+        postalCode,
+        country,
       },
       items: order.items && order.items.length > 0
         ? order.items.map((i) => ({
@@ -1095,7 +1093,6 @@ export async function dispatchOrderToShiprocket(req: Request, res: Response, nex
       include: {
         user: true,
         items: true,
-        shippingAddress: true,
         statusHistory: { orderBy: { createdAt: 'desc' } },
       },
     });
@@ -1129,7 +1126,6 @@ export async function syncAllOrdersToShiprocket(req: Request, res: Response, nex
       orderBy: { createdAt: 'desc' },
       include: {
         user: true,
-        shippingAddress: true,
         items: true,
         payments: true,
       },
@@ -1141,31 +1137,37 @@ export async function syncAllOrdersToShiprocket(req: Request, res: Response, nex
 
     for (const order of orders) {
       try {
-        let address: any = order.shippingAddress;
-        if (!address && order.userId) {
-          address = await prisma.address.findFirst({
-            where: { userId: order.userId },
-            orderBy: { isDefault: 'desc' },
-          });
-        }
-
+        const address: any = order.shippingAddress || {};
         const paymentMethod = order.payments?.[0]?.method === 'COD' ? 'COD' : 'Prepaid';
+
+        const custFirstName = (address.billing_customer_name || address.shipping_customer_name || address.firstName || order.user?.firstName || 'Customer').trim();
+        const custLastName = (address.billing_last_name || address.shipping_last_name || address.lastName || order.user?.lastName || 'REBELIVE').trim();
+        const custEmail = (address.billing_email || address.shipping_email || address.email || order.user?.email || 'customer@rebelive.co').trim();
+        const custPhone = (address.billing_phone || address.shipping_phone || address.phone || order.user?.phone || '').trim();
+
+        const line1 = (address.billing_address || address.shipping_address || address.line1 || address.address1 || address.street || address.address || 'Address').trim();
+        const line2 = (address.billing_address_2 || address.shipping_address_2 || address.line2 || address.address2 || '').trim();
+        const city = (address.billing_city || address.shipping_city || address.city || address.district || 'City').trim();
+        const state = (address.billing_state || address.shipping_state || address.state || address.province || 'State').trim();
+        const postalCode = (address.billing_pincode || address.shipping_pincode || address.postalCode || address.pincode || address.zip || '110001').replace(/\D/g, '').slice(0, 6) || '110001';
+        const country = (address.billing_country || address.shipping_country || address.country || 'India').trim();
+
         const shiprocketResult = await shiprocketService.createAdhocOrder({
           orderNumber: order.orderNumber,
           createdAt: order.createdAt,
           customer: {
-            firstName: order.user?.firstName || 'Customer',
-            lastName: order.user?.lastName || 'Rebelive',
-            email: order.user?.email || 'customer@rebelive.co',
-            phone: order.user?.phone || '9999999999',
+            firstName: custFirstName,
+            lastName: custLastName,
+            email: custEmail,
+            phone: custPhone,
           },
           address: {
-            line1: address?.line1 || 'Address on file',
-            line2: address?.line2 || '',
-            city: address?.city || 'Amritsar',
-            state: address?.state || 'Punjab',
-            postalCode: address?.postalCode || '143001',
-            country: address?.country || 'India',
+            line1,
+            line2,
+            city,
+            state,
+            postalCode,
+            country,
           },
           items: order.items && order.items.length > 0
             ? order.items.map((i) => ({
@@ -1230,7 +1232,6 @@ export async function trackOrderShiprocket(req: Request, res: Response, next: Ne
     const order = await prisma.order.findUnique({
       where: { id },
       include: {
-        shippingAddress: true,
         statusHistory: { orderBy: { createdAt: 'desc' } },
       },
     });
@@ -1243,7 +1244,7 @@ export async function trackOrderShiprocket(req: Request, res: Response, next: Ne
         orderNumber: order.orderNumber,
         createdAt: order.createdAt,
         status: order.status,
-        address: order.shippingAddress,
+        address: order.shippingAddress as any,
         trackingNumber: order.trackingNumber,
         statusHistory: order.statusHistory,
       }

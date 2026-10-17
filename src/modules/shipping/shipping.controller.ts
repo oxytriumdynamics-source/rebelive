@@ -142,6 +142,140 @@ async function resolveProductAndVariant(item: {
 }
 
 /**
+ * Formats shipping address and customer data into pure Shiprocket format.
+ * Saved directly into order.shippingAddress (No separate Address collection).
+ * Prevents hardcoded dummy addresses ("Main Street", "Amritsar", etc.) from being saved.
+ */
+export function buildShiprocketAddress(rawAddr: any = {}, rawCust: any = {}) {
+  const cleanPhoneDigits = (
+    rawCust.phone ||
+    rawCust.mobile ||
+    rawCust.contact ||
+    rawCust.phone_number ||
+    rawAddr.phone ||
+    rawAddr.mobile ||
+    rawAddr.contact ||
+    rawAddr.billing_phone ||
+    rawAddr.shipping_phone ||
+    ''
+  ).replace(/\D/g, '').slice(-10);
+
+  const rawPincode = String(
+    rawAddr.billing_pincode ||
+    rawAddr.shipping_pincode ||
+    rawAddr.postalCode ||
+    rawAddr.pincode ||
+    rawAddr.postal_code ||
+    rawAddr.zip ||
+    rawAddr.pin ||
+    ''
+  ).replace(/\D/g, '').slice(0, 6);
+
+  const rawName = (
+    rawCust.name ||
+    rawCust.fullName ||
+    rawAddr.name ||
+    rawAddr.fullName ||
+    `${rawCust.firstName || rawCust.first_name || rawAddr.first_name || ''} ${rawCust.lastName || rawCust.last_name || rawAddr.last_name || ''}`.trim() ||
+    'Customer'
+  ).trim();
+  const nameParts = rawName.split(' ');
+  const firstName = (rawCust.firstName || rawCust.first_name || rawAddr.first_name || nameParts[0] || 'Customer').trim();
+  const lastName = (rawCust.lastName || rawCust.last_name || rawAddr.last_name || nameParts.slice(1).join(' ') || 'REBELIVE').trim() || 'REBELIVE';
+
+  const email = (
+    rawCust.email ||
+    rawCust.customer_email ||
+    rawAddr.email ||
+    rawAddr.billing_email ||
+    rawAddr.shipping_email ||
+    (cleanPhoneDigits ? `${cleanPhoneDigits}@fastrr.com` : 'customer@rebelive.co')
+  ).trim().toLowerCase();
+
+  const line1 = (
+    rawAddr.billing_address ||
+    rawAddr.shipping_address ||
+    rawAddr.line1 ||
+    rawAddr.address1 ||
+    rawAddr.street ||
+    rawAddr.address ||
+    rawAddr.house_no ||
+    rawAddr.complete_address ||
+    rawAddr.full_address ||
+    'Address'
+  ).trim();
+
+  const line2 = (
+    rawAddr.billing_address_2 ||
+    rawAddr.shipping_address_2 ||
+    rawAddr.line2 ||
+    rawAddr.address2 ||
+    rawAddr.landmark ||
+    rawAddr.area ||
+    ''
+  ).trim();
+
+  const city = (
+    rawAddr.billing_city ||
+    rawAddr.shipping_city ||
+    rawAddr.city ||
+    rawAddr.district ||
+    rawAddr.town ||
+    'City'
+  ).trim();
+
+  const state = (
+    rawAddr.billing_state ||
+    rawAddr.shipping_state ||
+    rawAddr.state ||
+    rawAddr.province ||
+    rawAddr.region ||
+    'State'
+  ).trim();
+
+  const country = (
+    rawAddr.billing_country ||
+    rawAddr.shipping_country ||
+    rawAddr.country ||
+    rawAddr.country_code ||
+    'India'
+  ).trim();
+
+  return {
+    billing_customer_name: firstName,
+    billing_last_name: lastName,
+    billing_address: line1,
+    billing_address_2: line2,
+    billing_city: city,
+    billing_pincode: rawPincode || '110001',
+    billing_state: state,
+    billing_country: country,
+    billing_email: email,
+    billing_phone: cleanPhoneDigits || '9999999999',
+    shipping_is_billing: true,
+    shipping_customer_name: firstName,
+    shipping_last_name: lastName,
+    shipping_address: line1,
+    shipping_address_2: line2,
+    shipping_city: city,
+    shipping_pincode: rawPincode || '110001',
+    shipping_country: country,
+    shipping_state: state,
+    shipping_email: email,
+    shipping_phone: cleanPhoneDigits || '9999999999',
+    line1,
+    line2,
+    city,
+    state,
+    postalCode: rawPincode || '110001',
+    country,
+    fullName: rawName,
+    phone: cleanPhoneDigits || '',
+    email,
+  };
+}
+
+/**
  * POST /api/v1/shipping/fastrr/initiate
  * Prepares a Fastrr 1-Click checkout session with signed payload and totals.
  */
@@ -178,11 +312,46 @@ export async function initiateFastrrCheckout(req: Request, res: Response, next: 
     if (userId) {
       resolvedUser = await prisma.user.findUnique({
         where: { id: userId },
-        include: { addresses: true },
       });
-      if (resolvedUser) {
-        savedAddresses = resolvedUser.addresses;
+
+      // Retrieve the user's latest saved address from their past orders
+      const lastOrderWithAddress = await prisma.order.findFirst({
+        where: {
+          userId,
+          shippingAddress: { not: null },
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { shippingAddress: true },
+      });
+      if (lastOrderWithAddress?.shippingAddress) {
+        const addrObj: any = lastOrderWithAddress.shippingAddress;
+        if (addrObj && (addrObj.billing_address || addrObj.line1) && addrObj.billing_address !== 'Address' && addrObj.line1 !== 'Address') {
+          savedAddresses = [addrObj];
+        }
       }
+    }
+
+    // Also check if customer phone matches a past order with valid shipping address
+    const cleanCustomerPhone = customer?.phone?.replace(/\D/g, '').slice(-10);
+    if (savedAddresses.length === 0 && cleanCustomerPhone && cleanCustomerPhone.length === 10) {
+      const pastOrderByPhone = await prisma.order.findFirst({
+        where: {
+          notes: { contains: cleanCustomerPhone },
+          shippingAddress: { not: null },
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { shippingAddress: true },
+      });
+      if (pastOrderByPhone?.shippingAddress) {
+        const addrObj: any = pastOrderByPhone.shippingAddress;
+        if (addrObj && (addrObj.billing_address || addrObj.line1) && addrObj.billing_address !== 'Address' && addrObj.line1 !== 'Address') {
+          savedAddresses = [addrObj];
+        }
+      }
+    }
+
+    if ((req.body as any).shippingAddress) {
+      savedAddresses = [buildShiprocketAddress((req.body as any).shippingAddress, customer || resolvedUser)];
     }
 
     // Resolve variants and price
@@ -266,6 +435,7 @@ export async function initiateFastrrCheckout(req: Request, res: Response, next: 
     const hmacSignature = shiprocketService.generateFastrrSignature(signaturePayload);
 
     // Call live Shiprocket Fastrr token endpoint
+    const primarySavedAddress = savedAddresses[0] || null;
     const fastrrTokenResult = await shiprocketService.createFastrrCheckoutToken({
       cart_data: {
         items: enrichedItems.map((i) => ({
@@ -286,6 +456,24 @@ export async function initiateFastrrCheckout(req: Request, res: Response, next: 
         },
         mobile_app: false,
       },
+      customer: {
+        name: customer?.name || (resolvedUser ? `${resolvedUser.firstName} ${resolvedUser.lastName}`.trim() : undefined),
+        email: customer?.email || resolvedUser?.email || undefined,
+        phone: customer?.phone || resolvedUser?.phone || undefined,
+      },
+      shipping_address: primarySavedAddress
+        ? {
+            first_name: primarySavedAddress.billing_customer_name || primarySavedAddress.firstName || 'Customer',
+            last_name: primarySavedAddress.billing_last_name || primarySavedAddress.lastName || '',
+            address1: primarySavedAddress.billing_address || primarySavedAddress.line1 || '',
+            address2: primarySavedAddress.billing_address_2 || primarySavedAddress.line2 || '',
+            city: primarySavedAddress.billing_city || primarySavedAddress.city || '',
+            state: primarySavedAddress.billing_state || primarySavedAddress.state || '',
+            pincode: primarySavedAddress.billing_pincode || primarySavedAddress.postalCode || '',
+            phone: primarySavedAddress.billing_phone || primarySavedAddress.phone || '',
+            country: primarySavedAddress.billing_country || primarySavedAddress.country || 'India',
+          }
+        : undefined,
       redirect_url: `${env.CLIENT_URL}/order-confirmation`,
     });
 
@@ -333,7 +521,7 @@ export async function initiateFastrrCheckout(req: Request, res: Response, next: 
  */
 export async function generateFastrrToken(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { items, couponCode, redirectUrl } = req.body as {
+    const { items, customer, couponCode, redirectUrl, shippingAddress } = req.body as {
       items?: Array<{
         productId?: string | number;
         variantId?: string | number;
@@ -345,12 +533,56 @@ export async function generateFastrrToken(req: Request, res: Response, next: Nex
         flavor?: string;
         image?: string;
       }>;
+      customer?: {
+        name?: string;
+        email?: string;
+        phone?: string;
+      };
       couponCode?: string;
       redirectUrl?: string;
+      shippingAddress?: any;
     };
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       throw new ValidationError('At least one item is required to generate checkout token');
+    }
+
+    const authUserId = getAuthenticatedUserId(req);
+    let prefillCustomer = customer;
+    let prefillAddress = shippingAddress;
+
+    if (!prefillAddress && authUserId) {
+      const pastOrder = await prisma.order.findFirst({
+        where: {
+          userId: authUserId,
+          shippingAddress: { not: null },
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { shippingAddress: true, user: true },
+      });
+      if (pastOrder?.shippingAddress) {
+        const addrObj: any = pastOrder.shippingAddress;
+        if (addrObj && (addrObj.billing_address || addrObj.line1) && addrObj.billing_address !== 'Address' && addrObj.line1 !== 'Address') {
+          prefillAddress = {
+            first_name: addrObj.billing_customer_name || addrObj.firstName || pastOrder.user?.firstName || 'Customer',
+            last_name: addrObj.billing_last_name || addrObj.lastName || pastOrder.user?.lastName || '',
+            address1: addrObj.billing_address || addrObj.line1 || '',
+            address2: addrObj.billing_address_2 || addrObj.line2 || '',
+            city: addrObj.billing_city || addrObj.city || '',
+            state: addrObj.billing_state || addrObj.state || '',
+            pincode: addrObj.billing_pincode || addrObj.postalCode || '',
+            phone: addrObj.billing_phone || addrObj.phone || pastOrder.user?.phone || '',
+            country: addrObj.billing_country || addrObj.country || 'India',
+          };
+          if (!prefillCustomer) {
+            prefillCustomer = {
+              name: `${pastOrder.user?.firstName || ''} ${pastOrder.user?.lastName || ''}`.trim() || undefined,
+              email: pastOrder.user?.email || undefined,
+              phone: pastOrder.user?.phone || undefined,
+            };
+          }
+        }
+      }
     }
 
     const fastrrItems = [];
@@ -419,6 +651,8 @@ export async function generateFastrrToken(req: Request, res: Response, next: Nex
         },
         mobile_app: false,
       },
+      customer: prefillCustomer,
+      shipping_address: prefillAddress,
       redirect_url: redirectUrl || `${env.CLIENT_URL}/order-confirmation`,
     });
 
@@ -552,19 +786,8 @@ export async function completeFastrrCheckout(req: Request, res: Response, next: 
       }
     }
 
-    // 2. Create/Save Address
-    const address = await prisma.address.create({
-      data: {
-        userId: targetUserId,
-        label: 'Fastrr Delivery Address',
-        line1: shippingAddress.line1.trim(),
-        line2: shippingAddress.line2?.trim() || null,
-        city: shippingAddress.city.trim(),
-        state: shippingAddress.state.trim(),
-        postalCode: shippingAddress.postalCode.trim(),
-        country: shippingAddress.country?.trim() || 'IN',
-      },
-    });
+    // 2. Build Address directly in Shiprocket format (no separate database table)
+    const resolvedShippingAddress = buildShiprocketAddress(shippingAddress, customer);
 
     // 3. Resolve Items and Prices from DB
     let subtotal = 0;
@@ -653,7 +876,7 @@ export async function completeFastrrCheckout(req: Request, res: Response, next: 
           shippingAmount,
           total: finalTotal,
           couponId,
-          shippingAddressId: address.id,
+          shippingAddress: resolvedShippingAddress,
           status: 'CONFIRMED',
           notes: `${notes ? notes + ' | ' : ''}Customer Phone: ${cleanCustomerPhone || rawCustomerPhone} | Fastrr 1-Click Instant Checkout`,
           items: {
@@ -677,7 +900,6 @@ export async function completeFastrrCheckout(req: Request, res: Response, next: 
         },
         include: {
           items: true,
-          shippingAddress: true,
         },
       });
 
@@ -730,18 +952,18 @@ export async function completeFastrrCheckout(req: Request, res: Response, next: 
       orderNumber: order.orderNumber,
       createdAt: order.createdAt,
       customer: {
-        firstName: customer.firstName,
-        lastName: customer.lastName,
-        email: customer.email,
-        phone: customer.phone,
+        firstName: resolvedShippingAddress.billing_customer_name,
+        lastName: resolvedShippingAddress.billing_last_name,
+        email: resolvedShippingAddress.billing_email,
+        phone: resolvedShippingAddress.billing_phone,
       },
       address: {
-        line1: shippingAddress.line1,
-        line2: shippingAddress.line2,
-        city: shippingAddress.city,
-        state: shippingAddress.state,
-        postalCode: shippingAddress.postalCode,
-        country: shippingAddress.country,
+        line1: resolvedShippingAddress.billing_address,
+        line2: resolvedShippingAddress.billing_address_2,
+        city: resolvedShippingAddress.billing_city,
+        state: resolvedShippingAddress.billing_state,
+        postalCode: resolvedShippingAddress.billing_pincode,
+        country: resolvedShippingAddress.billing_country,
       },
       items: finalOrderItems.map((i) => ({
         name: `${i.productName} - ${i.variantName}`,
@@ -775,7 +997,6 @@ export async function completeFastrrCheckout(req: Request, res: Response, next: 
       },
       include: {
         items: true,
-        shippingAddress: true,
         payments: true,
         statusHistory: { orderBy: { createdAt: 'desc' } },
       },
@@ -861,7 +1082,6 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
     },
     include: {
       items: true,
-      shippingAddress: true,
       payments: true,
       user: true,
       statusHistory: { orderBy: { createdAt: 'desc' } },
@@ -876,6 +1096,91 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
         data: { status: 'COMPLETED', paidAt: new Date() },
       });
     }
+
+    // Check if existing order lacks a real shipping address, but params/saved address has one
+    const exAddr: any = existing.shippingAddress;
+    const hasExistingAddress = Boolean(
+      exAddr &&
+      (exAddr.billing_address || exAddr.line1) &&
+      exAddr.billing_address !== 'Address' &&
+      exAddr.line1 !== 'Address'
+    );
+
+    if (!hasExistingAddress) {
+      let candidateAddr: any = params.shippingAddress;
+      if (!candidateAddr && existing.userId) {
+        const pastOrder = await prisma.order.findFirst({
+          where: {
+            userId: existing.userId,
+            id: { not: existing.id },
+            shippingAddress: { not: null },
+          },
+          orderBy: { createdAt: 'desc' },
+          select: { shippingAddress: true },
+        });
+        if (pastOrder?.shippingAddress) {
+          candidateAddr = pastOrder.shippingAddress;
+        }
+      }
+
+      if (candidateAddr) {
+        const updatedAddr = buildShiprocketAddress(candidateAddr, params.customer || existing.user || {});
+        await prisma.order.update({
+          where: { id: existing.id },
+          data: { shippingAddress: updatedAddr },
+        });
+        existing.shippingAddress = updatedAddr as any;
+
+        // Auto dispatch to Shiprocket if not yet assigned live AWB
+        if (!existing.shiprocketShipmentId || !existing.trackingNumber || existing.trackingNumber.startsWith('SR-')) {
+          try {
+            const srRes = await shiprocketService.createAdhocOrder({
+              orderNumber: existing.orderNumber,
+              createdAt: existing.createdAt,
+              customer: {
+                firstName: updatedAddr.billing_customer_name,
+                lastName: updatedAddr.billing_last_name,
+                email: updatedAddr.billing_email,
+                phone: updatedAddr.billing_phone,
+              },
+              address: {
+                line1: updatedAddr.billing_address,
+                line2: updatedAddr.billing_address_2,
+                city: updatedAddr.billing_city,
+                state: updatedAddr.billing_state,
+                postalCode: updatedAddr.billing_pincode,
+                country: updatedAddr.billing_country,
+              },
+              items: existing.items.map((i) => ({
+                name: `${i.productName} - ${i.variantName}`,
+                sku: i.sku,
+                units: i.quantity,
+                selling_price: i.unitPrice,
+              })),
+              paymentMethod: 'Prepaid',
+              subtotal: existing.subtotal,
+              discountAmount: existing.discountAmount,
+              shippingAmount: existing.shippingAmount,
+              total: existing.total,
+            });
+
+            if (srRes?.awbCode || srRes?.shiprocketOrderId) {
+              await prisma.order.update({
+                where: { id: existing.id },
+                data: {
+                  trackingNumber: srRes.awbCode || existing.trackingNumber,
+                  shiprocketOrderId: srRes.shiprocketOrderId || existing.shiprocketOrderId,
+                  shiprocketShipmentId: srRes.shiprocketShipmentId || existing.shiprocketShipmentId,
+                },
+              });
+            }
+          } catch (srErr) {
+            console.warn('⚠️ Non-fatal error dispatching updated saved address to Shiprocket:', srErr);
+          }
+        }
+      }
+    }
+
     return existing;
   }
 
@@ -1031,47 +1336,63 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
     }
   }
 
-  // 5. Create Delivery Address directly from Fastrr
-  const line1 = (
-    rawAddr.line1 ||
-    rawAddr.address1 ||
-    rawAddr.street ||
-    rawAddr.address ||
-    rawAddr.house_no ||
-    'Main Street'
-  ).trim();
-  const line2 = (
-    rawAddr.line2 ||
-    rawAddr.address2 ||
-    rawAddr.landmark ||
-    rawAddr.area ||
-    ''
-  ).trim() || null;
-  const city = (rawAddr.city || rawAddr.district || 'Amritsar').trim();
-  const state = (rawAddr.state || rawAddr.province || 'Punjab').trim();
-  const postalCode = String(
-    rawAddr.postalCode ||
-    rawAddr.pincode ||
-    rawAddr.postal_code ||
-    rawAddr.zip ||
-    rawAddr.pin ||
-    '143001'
-  ).replace(/\D/g, '').slice(0, 6) || '143001';
-  const country = (rawAddr.country || rawAddr.country_code || 'India').trim();
+  // 5. Build Delivery Address directly in Shiprocket format (no separate collection)
+  let effectiveAddr = rawAddr;
+  const isAddrEmpty =
+    !effectiveAddr ||
+    (!effectiveAddr.line1 &&
+      !effectiveAddr.billing_address &&
+      !effectiveAddr.address &&
+      !effectiveAddr.address1) ||
+    effectiveAddr.line1 === 'Address' ||
+    effectiveAddr.billing_address === 'Address';
 
-  const address = await prisma.address.create({
-    data: {
-      userId: targetUserId!,
-      label: 'Fastrr Delivery Address',
-      line1,
-      line2,
-      city,
-      state,
-      postalCode,
-      country,
-      isDefault: true,
-    },
-  });
+  if (isAddrEmpty) {
+    if (targetUserId) {
+      const pastOrder = await prisma.order.findFirst({
+        where: {
+          userId: targetUserId,
+          shippingAddress: { not: null },
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { shippingAddress: true },
+      });
+      if (pastOrder?.shippingAddress) {
+        const candidate: any = pastOrder.shippingAddress;
+        if (
+          candidate &&
+          (candidate.billing_address || candidate.line1) &&
+          candidate.billing_address !== 'Address' &&
+          candidate.line1 !== 'Address'
+        ) {
+          effectiveAddr = candidate;
+        }
+      }
+    }
+    if ((!effectiveAddr || isAddrEmpty) && cleanPhone && cleanPhone.length >= 10) {
+      const pastOrderByPhone = await prisma.order.findFirst({
+        where: {
+          notes: { contains: cleanPhone },
+          shippingAddress: { not: null },
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { shippingAddress: true },
+      });
+      if (pastOrderByPhone?.shippingAddress) {
+        const candidate: any = pastOrderByPhone.shippingAddress;
+        if (
+          candidate &&
+          (candidate.billing_address || candidate.line1) &&
+          candidate.billing_address !== 'Address' &&
+          candidate.line1 !== 'Address'
+        ) {
+          effectiveAddr = candidate;
+        }
+      }
+    }
+  }
+
+  const resolvedShippingAddress = buildShiprocketAddress(effectiveAddr, rawCustomer);
 
   // 6. Resolve Items
   const rawItems =
@@ -1171,7 +1492,7 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
         taxAmount: Math.round((subtotal - discountAmount) * 0.18),
         shippingAmount,
         total: finalTotal,
-        shippingAddressId: address.id,
+        shippingAddress: resolvedShippingAddress,
         status: 'CONFIRMED',
         shiprocketOrderId: String(fastrrRef),
         trackingNumber: `SR-${cleanPhone ? cleanPhone.slice(-6) : Date.now().toString().slice(-6)}`,
@@ -1205,7 +1526,6 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
       },
       include: {
         items: true,
-        shippingAddress: true,
         payments: true,
         user: true,
         statusHistory: { orderBy: { createdAt: 'desc' } },
@@ -1247,18 +1567,18 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
       orderNumber: newOrder.orderNumber,
       createdAt: newOrder.createdAt,
       customer: {
-        firstName,
-        lastName,
-        email,
-        phone: cleanPhone || rawPhone || '9876543210',
+        firstName: resolvedShippingAddress.billing_customer_name,
+        lastName: resolvedShippingAddress.billing_last_name,
+        email: resolvedShippingAddress.billing_email,
+        phone: resolvedShippingAddress.billing_phone,
       },
       address: {
-        line1,
-        line2: line2 || '',
-        city,
-        state,
-        postalCode,
-        country,
+        line1: resolvedShippingAddress.billing_address,
+        line2: resolvedShippingAddress.billing_address_2,
+        city: resolvedShippingAddress.billing_city,
+        state: resolvedShippingAddress.billing_state,
+        postalCode: resolvedShippingAddress.billing_pincode,
+        country: resolvedShippingAddress.billing_country,
       },
       items: finalItems.map((i) => ({
         name: `${i.productName} - ${i.variantName}`,
@@ -1299,16 +1619,21 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
 export async function confirmFastrrOrder(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const authUserId = getAuthenticatedUserId(req);
-    const { orderId, items, customer, shippingAddress, payment, totalAmount, notes } = req.body || {};
+    const { orderId, items, customer, shippingAddress, savedAddress, savedAddresses, payment, totalAmount, notes } = req.body || {};
     if (!orderId) {
       throw new ValidationError('Order identifier is required to confirm checkout');
     }
+
+    const effectiveAddress =
+      shippingAddress ||
+      savedAddress ||
+      (Array.isArray(savedAddresses) && savedAddresses[0] ? savedAddresses[0] : undefined);
 
     const order = await ingestOrConfirmFastrrOrder({
       orderId: String(orderId),
       authUserId,
       customer,
-      shippingAddress,
+      shippingAddress: effectiveAddress,
       items,
       payment,
       totalAmount,
@@ -1349,7 +1674,6 @@ export async function trackShipment(req: Request, res: Response, next: NextFunct
         ],
       },
       include: {
-        shippingAddress: true,
         items: true,
         payments: true,
         statusHistory: { orderBy: { createdAt: 'desc' } },
@@ -1363,7 +1687,7 @@ export async function trackShipment(req: Request, res: Response, next: NextFunct
             orderNumber: order.orderNumber,
             createdAt: order.createdAt,
             status: order.status,
-            address: order.shippingAddress,
+            address: (order.shippingAddress as any) || undefined,
             trackingNumber: order.trackingNumber,
             statusHistory: order.statusHistory,
           }
@@ -1566,12 +1890,27 @@ export async function handleFastrrWebhook(req: Request, res: Response, next: Nex
         ],
       },
       include: {
-        payments: true,
-        shippingAddress: true,
         items: true,
-        user: true,
+        payments: true,
       },
     });
+
+    const customerData =
+      data.customer ||
+      data.billing_address ||
+      payload.customer ||
+      payload.billing_address ||
+      {};
+    const shippingAddressData =
+      data.shipping_address ||
+      data.delivery_address ||
+      payload.shipping_address ||
+      payload.delivery_address ||
+      data.billing_address ||
+      payload.billing_address ||
+      {};
+
+    const realShiprocketAddress = buildShiprocketAddress(shippingAddressData, customerData);
 
     if (existingOrder) {
       if (event.includes('paid') || event.includes('success')) {
@@ -1580,25 +1919,26 @@ export async function handleFastrrWebhook(req: Request, res: Response, next: Nex
         let srShipmentId = existingOrder.shiprocketShipmentId;
         let courierName = 'Shiprocket Express';
 
-        // Automatically dispatch to Shiprocket if not yet assigned
-        if (!srOrderId || !awbCode) {
+        // Automatically dispatch to Shiprocket with the REAL address from the Fastrr webhook
+        const isRealShiprocketOrder = Boolean(srShipmentId && awbCode && !awbCode.startsWith('SR-'));
+        if (!isRealShiprocketOrder) {
           try {
             const srRes = await shiprocketService.createAdhocOrder({
               orderNumber: existingOrder.orderNumber,
               createdAt: existingOrder.createdAt,
               customer: {
-                firstName: existingOrder.user?.firstName || 'Customer',
-                lastName: existingOrder.user?.lastName || 'Rebelive',
-                email: existingOrder.user?.email || 'customer@rebelive.co',
-                phone: existingOrder.user?.phone || '9999999999',
+                firstName: realShiprocketAddress.billing_customer_name,
+                lastName: realShiprocketAddress.billing_last_name,
+                email: realShiprocketAddress.billing_email,
+                phone: realShiprocketAddress.billing_phone,
               },
               address: {
-                line1: existingOrder.shippingAddress?.line1 || 'Address',
-                line2: existingOrder.shippingAddress?.line2 || '',
-                city: existingOrder.shippingAddress?.city || 'Delhi',
-                state: existingOrder.shippingAddress?.state || 'Delhi',
-                postalCode: existingOrder.shippingAddress?.postalCode || '110001',
-                country: existingOrder.shippingAddress?.country || 'India',
+                line1: realShiprocketAddress.billing_address,
+                line2: realShiprocketAddress.billing_address_2,
+                city: realShiprocketAddress.billing_city,
+                state: realShiprocketAddress.billing_state,
+                postalCode: realShiprocketAddress.billing_pincode,
+                country: realShiprocketAddress.billing_country,
               },
               items: existingOrder.items.map((i) => ({
                 name: `${i.productName} - ${i.variantName}`,
@@ -1612,9 +1952,9 @@ export async function handleFastrrWebhook(req: Request, res: Response, next: Nex
               shippingAmount: existingOrder.shippingAmount,
               total: existingOrder.total,
             });
-            srOrderId = srRes.shiprocketOrderId;
-            srShipmentId = srRes.shiprocketShipmentId;
-            awbCode = srRes.awbCode;
+            srOrderId = srRes.shiprocketOrderId || srOrderId;
+            srShipmentId = srRes.shiprocketShipmentId || srShipmentId;
+            awbCode = srRes.awbCode || awbCode;
             courierName = srRes.courierName || courierName;
           } catch (srErr) {
             console.warn('⚠️ Non-fatal error auto-connecting order to Shiprocket on Fastrr webhook:', srErr);
@@ -1625,6 +1965,7 @@ export async function handleFastrrWebhook(req: Request, res: Response, next: Nex
           where: { id: existingOrder.id },
           data: {
             status: 'CONFIRMED',
+            shippingAddress: realShiprocketAddress,
             shiprocketOrderId: srOrderId,
             shiprocketShipmentId: srShipmentId,
             trackingNumber: awbCode,
@@ -1669,18 +2010,6 @@ export async function handleFastrrWebhook(req: Request, res: Response, next: Nex
     }
 
     // Order does not exist in DB yet: Ingest and save order immediately (supports guest & user)
-    const customerData =
-      data.customer ||
-      data.billing_address ||
-      payload.customer ||
-      payload.billing_address ||
-      {};
-    const shippingAddressData =
-      data.shipping_address ||
-      data.delivery_address ||
-      payload.shipping_address ||
-      payload.delivery_address ||
-      {};
     const itemsData =
       data.items ||
       data.cart_data?.items ||
@@ -2043,7 +2372,6 @@ export async function getFastrrOrderDetails(req: Request, res: Response, next: N
       },
       include: {
         items: true,
-        shippingAddress: true,
         payments: true,
       },
     });
@@ -2079,12 +2407,12 @@ export async function getFastrrOrderDetails(req: Request, res: Response, next: N
       },
       shipping_address: order.shippingAddress
         ? {
-            line1: order.shippingAddress.line1,
-            line2: order.shippingAddress.line2 || '',
-            city: order.shippingAddress.city,
-            state: order.shippingAddress.state,
-            pincode: order.shippingAddress.postalCode,
-            country: order.shippingAddress.country || 'India',
+            line1: (order.shippingAddress as any).line1 || (order.shippingAddress as any).billing_address || 'Address',
+            line2: (order.shippingAddress as any).line2 || (order.shippingAddress as any).billing_address_2 || '',
+            city: (order.shippingAddress as any).city || (order.shippingAddress as any).billing_city || 'City',
+            state: (order.shippingAddress as any).state || (order.shippingAddress as any).billing_state || 'State',
+            pincode: (order.shippingAddress as any).postalCode || (order.shippingAddress as any).billing_pincode || '110001',
+            country: (order.shippingAddress as any).country || (order.shippingAddress as any).billing_country || 'India',
           }
         : null,
       tracking_number: order.trackingNumber,
@@ -2124,7 +2452,7 @@ export async function listFastrrOrders(req: Request, res: Response, next: NextFu
         skip: pageNum * take,
         take,
         orderBy: { createdAt: 'desc' },
-        include: { shippingAddress: true, items: true },
+        include: { items: true },
       }),
       prisma.order.count({ where }),
     ]);
@@ -2275,25 +2603,26 @@ export async function handleShiprocketOrderWebhook(req: Request, res: Response, 
         try {
           const fullOrder = await prisma.order.findUnique({
             where: { id: order.id },
-            include: { shippingAddress: true, items: true, user: true },
+            include: { items: true, user: true },
           });
-          if (fullOrder && fullOrder.shippingAddress) {
+          if (fullOrder) {
+            const shipAddr = buildShiprocketAddress(shippingAddress || fullOrder.shippingAddress || {}, payload || fullOrder.user || {});
             const srRes = await shiprocketService.createAdhocOrder({
               orderNumber: fullOrder.orderNumber,
               createdAt: fullOrder.createdAt,
               customer: {
-                firstName: fullOrder.user?.firstName || 'Customer',
-                lastName: fullOrder.user?.lastName || '',
-                email: fullOrder.user?.email || 'customer@rebelive.co',
-                phone: fullOrder.user?.phone || '9999999999',
+                firstName: shipAddr.billing_customer_name,
+                lastName: shipAddr.billing_last_name,
+                email: shipAddr.billing_email,
+                phone: shipAddr.billing_phone,
               },
               address: {
-                line1: fullOrder.shippingAddress.line1,
-                line2: fullOrder.shippingAddress.line2 || '',
-                city: fullOrder.shippingAddress.city,
-                state: fullOrder.shippingAddress.state,
-                postalCode: fullOrder.shippingAddress.postalCode,
-                country: fullOrder.shippingAddress.country || 'India',
+                line1: shipAddr.billing_address,
+                line2: shipAddr.billing_address_2,
+                city: shipAddr.billing_city,
+                state: shipAddr.billing_state,
+                postalCode: shipAddr.billing_pincode,
+                country: shipAddr.billing_country,
               },
               items: fullOrder.items.map((i) => ({
                 name: `${i.productName} - ${i.variantName}`,

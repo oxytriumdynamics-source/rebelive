@@ -300,20 +300,96 @@ class ShiprocketService {
       pickupLocation = await this.getEffectivePickupLocation(token);
     }
 
-    const cleanPhoneDigits = (params.customer.phone || '').replace(/\D/g, '').slice(-10) || '9876543210';
-    const billingPhone = parseInt(cleanPhoneDigits, 10) || 9876543210;
+    const addr: any = params.address || {};
+    const cust: any = params.customer || {};
 
-    const cleanPincodeDigits = (params.address.postalCode || '').replace(/\D/g, '').slice(0, 6) || '110001';
-    const billingPincode = parseInt(cleanPincodeDigits, 10) || 110001;
+    const cleanPhoneDigits = (
+      cust.phone ||
+      cust.mobile ||
+      addr.billing_phone ||
+      addr.shipping_phone ||
+      addr.phone ||
+      ''
+    ).replace(/\D/g, '').slice(-10);
+    const billingPhone = cleanPhoneDigits.length === 10 ? parseInt(cleanPhoneDigits, 10) : undefined;
 
-    const billingCustomerName = (params.customer.firstName || 'Customer').trim();
-    const billingLastName = (params.customer.lastName || 'REBELIVE').trim() || 'REBELIVE';
-    const billingAddress = (params.address.line1 || 'Main Street').trim();
-    const billingAddress2 = (params.address.line2 || '').trim();
-    const billingCity = (params.address.city || 'Amritsar').trim();
-    const billingState = (params.address.state || 'Punjab').trim();
-    const billingCountry = (params.address.country || 'India').trim();
-    const billingEmail = (params.customer.email || 'customer@rebelive.co').trim();
+    const rawPincode = (
+      addr.billing_pincode ||
+      addr.shipping_pincode ||
+      addr.postalCode ||
+      addr.pincode ||
+      addr.zip ||
+      ''
+    ).replace(/\D/g, '').slice(0, 6);
+    const billingPincode = rawPincode ? parseInt(rawPincode, 10) : undefined;
+
+    const billingCustomerName = (
+      cust.firstName ||
+      addr.billing_customer_name ||
+      addr.shipping_customer_name ||
+      addr.firstName ||
+      (cust.name ? cust.name.split(' ')[0] : '') ||
+      'Customer'
+    ).trim();
+
+    const billingLastName = (
+      cust.lastName ||
+      addr.billing_last_name ||
+      addr.shipping_last_name ||
+      addr.lastName ||
+      (cust.name ? cust.name.split(' ').slice(1).join(' ') : '') ||
+      'REBELIVE'
+    ).trim() || 'REBELIVE';
+
+    const billingAddress = (
+      addr.billing_address ||
+      addr.shipping_address ||
+      addr.line1 ||
+      addr.address1 ||
+      addr.street ||
+      addr.address ||
+      ''
+    ).trim();
+
+    const billingAddress2 = (
+      addr.billing_address_2 ||
+      addr.shipping_address_2 ||
+      addr.line2 ||
+      addr.address2 ||
+      addr.landmark ||
+      ''
+    ).trim();
+
+    const billingCity = (
+      addr.billing_city ||
+      addr.shipping_city ||
+      addr.city ||
+      addr.district ||
+      ''
+    ).trim();
+
+    const billingState = (
+      addr.billing_state ||
+      addr.shipping_state ||
+      addr.state ||
+      addr.province ||
+      ''
+    ).trim();
+
+    const billingCountry = (
+      addr.billing_country ||
+      addr.shipping_country ||
+      addr.country ||
+      'India'
+    ).trim();
+
+    const billingEmail = (
+      cust.email ||
+      addr.billing_email ||
+      addr.shipping_email ||
+      addr.email ||
+      (cleanPhoneDigits ? `fastrr_${cleanPhoneDigits}@fastrr.com` : 'customer@rebelive.co')
+    ).trim().toLowerCase();
 
     const payload: any = {
       order_id: params.orderNumber,
@@ -331,16 +407,16 @@ class ShiprocketService {
       billing_email: billingEmail,
       billing_phone: billingPhone,
       shipping_is_billing: true,
-      shipping_customer_name: '',
-      shipping_last_name: '',
-      shipping_address: '',
-      shipping_address_2: '',
-      shipping_city: '',
-      shipping_pincode: '',
-      shipping_country: '',
-      shipping_state: '',
-      shipping_email: '',
-      shipping_phone: '',
+      shipping_customer_name: billingCustomerName,
+      shipping_last_name: billingLastName,
+      shipping_address: billingAddress,
+      shipping_address_2: billingAddress2,
+      shipping_city: billingCity,
+      shipping_pincode: billingPincode,
+      shipping_country: billingCountry,
+      shipping_state: billingState,
+      shipping_email: billingEmail,
+      shipping_phone: billingPhone,
       order_items: params.items.map((item) => ({
         name: item.name,
         sku: item.sku,
@@ -732,6 +808,12 @@ class ShiprocketService {
       custom_attributes?: Record<string, string>;
       mobile_app?: boolean;
     };
+    customer?: {
+      name?: string;
+      email?: string;
+      phone?: string;
+    };
+    shipping_address?: any;
     redirect_url?: string;
   }): Promise<{
     success: boolean;
@@ -742,7 +824,7 @@ class ShiprocketService {
     raw?: any;
   }> {
     const checkoutBaseUrl = 'https://checkout-api.shiprocket.com';
-    const payload = {
+    const payload: any = {
       cart_data: {
         items: params.cart_data.items,
         cart_discount: params.cart_data.cart_discount,
@@ -752,6 +834,13 @@ class ShiprocketService {
       redirect_url: params.redirect_url || `${env.CLIENT_URL}/order-confirmation`,
       timestamp: new Date().toISOString(),
     };
+
+    if (params.customer) {
+      payload.customer = params.customer;
+    }
+    if (params.shipping_address) {
+      payload.shipping_address = params.shipping_address;
+    }
 
     const bodyStr = JSON.stringify(payload);
     const hmacBase64 = this.calculateFastrrHmac(bodyStr);

@@ -64,27 +64,18 @@ export async function mergePastGuestOrdersByPhone(targetUserId: string, cleanPho
           { notes: { contains: cleanPhone } },
         ],
       },
-      select: { id: true, shippingAddressId: true },
+      select: { id: true },
     });
 
     if (candidateOrders.length === 0) return 0;
 
     const orderIds = candidateOrders.map((o) => o.id);
-    const addressIds = candidateOrders.map((o) => o.shippingAddressId).filter(Boolean);
 
     // Reassign orders to the target user
     const res = await prisma.order.updateMany({
       where: { id: { in: orderIds } },
       data: { userId: targetUserId },
     });
-
-    // Also reassign delivery addresses so they appear in user's saved addresses
-    if (addressIds.length > 0) {
-      await prisma.address.updateMany({
-        where: { id: { in: addressIds } },
-        data: { userId: targetUserId },
-      });
-    }
 
     return res.count;
   } catch (err) {
@@ -216,74 +207,24 @@ export async function changePassword(req: Request, res: Response, next: NextFunc
   } catch (err) { next(err); }
 }
 
-// GET /api/v1/users/addresses
-export async function getAddresses(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const addresses = await prisma.address.findMany({
-      where: { userId: userId(req) },
-      orderBy: { isDefault: 'desc' },
-    });
-    res.json({ status: 'success', data: addresses });
-  } catch (err) { next(err); }
+// GET /api/v1/users/addresses (Addresses are stored directly in orders in Shiprocket format)
+export async function getAddresses(_req: Request, res: Response): Promise<void> {
+  res.json({ status: 'success', data: [] });
 }
 
 // POST /api/v1/users/addresses
-export async function createAddress(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const { label, line1, line2, city, state, postalCode, country, isDefault } = req.body as Record<string, string | boolean>;
-    if (isDefault) {
-      await prisma.address.updateMany({ where: { userId: userId(req) }, data: { isDefault: false } });
-    }
-    const address = await prisma.address.create({
-      data: {
-        userId: userId(req),
-        label: (label as string) || undefined,
-        line1: line1 as string,
-        line2: (line2 as string) || undefined,
-        city: city as string,
-        state: state as string,
-        postalCode: postalCode as string,
-        country: (country as string) ?? 'IN',
-        isDefault: (isDefault as boolean) ?? false,
-      },
-    });
-    res.status(201).json({ status: 'success', data: address });
-  } catch (err) { next(err); }
+export async function createAddress(req: Request, res: Response): Promise<void> {
+  res.status(200).json({ status: 'success', data: req.body || {} });
 }
 
 // PATCH /api/v1/users/addresses/:id
-export async function updateAddress(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const id = paramId(req);
-    const existing = await prisma.address.findFirst({
-      where: { id, userId: userId(req) },
-    });
-    if (!existing) throw new NotFoundError('Address');
-
-    if (req.body.isDefault) {
-      await prisma.address.updateMany({ where: { userId: userId(req) }, data: { isDefault: false } });
-    }
-    const { id: _ignoreId, userId: _ignoreUserId, ...safeUpdate } = req.body as Record<string, unknown>;
-    const address = await prisma.address.update({
-      where: { id },
-      data: safeUpdate,
-    });
-    res.json({ status: 'success', data: address });
-  } catch (err) { next(err); }
+export async function updateAddress(req: Request, res: Response): Promise<void> {
+  res.json({ status: 'success', data: req.body || {} });
 }
 
 // DELETE /api/v1/users/addresses/:id
-export async function deleteAddress(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const id = paramId(req);
-    const existing = await prisma.address.findFirst({
-      where: { id, userId: userId(req) },
-    });
-    if (!existing) throw new NotFoundError('Address');
-
-    await prisma.address.delete({ where: { id } });
-    res.json({ status: 'success', message: 'Address deleted' });
-  } catch (err) { next(err); }
+export async function deleteAddress(_req: Request, res: Response): Promise<void> {
+  res.json({ status: 'success', message: 'Address removed' });
 }
 
 // GET /api/v1/users/notifications

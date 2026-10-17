@@ -51,7 +51,6 @@ export async function getOrders(req: Request, res: Response, next: NextFunction)
         take,
         include: {
           items: { include: { product: { include: { images: { where: { isPrimary: true }, take: 1 } } } } },
-          shippingAddress: true,
           payments: true,
         },
       }),
@@ -81,7 +80,6 @@ export async function getOrder(req: Request, res: Response, next: NextFunction):
       },
       include: {
         items: { include: { product: true, variant: true, bundle: true } },
-        shippingAddress: true,
         payments: true,
         statusHistory: { orderBy: { createdAt: 'desc' } },
         coupon: true,
@@ -96,14 +94,14 @@ export async function getOrder(req: Request, res: Response, next: NextFunction):
 export async function placeOrder(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const {
-      shippingAddressId,
+      shippingAddress: rawShippingAddr,
       paymentMethod,
       notes,
       isPaid,
       transactionId,
       gatewayResponse,
     } = req.body as {
-      shippingAddressId: string;
+      shippingAddress?: any;
       paymentMethod: PaymentMethod;
       notes?: string;
       isPaid?: boolean;
@@ -111,16 +109,36 @@ export async function placeOrder(req: Request, res: Response, next: NextFunction
       gatewayResponse?: any;
     };
 
-    if (!shippingAddressId) {
-      throw new ValidationError('Shipping address is required');
-    }
-
-    const address = await prisma.address.findFirst({
-      where: { id: shippingAddressId, userId: uid(req) },
-    });
-    if (!address) {
-      throw new ValidationError('Invalid or unauthorized shipping address selected');
-    }
+    const rawAddr = (rawShippingAddr || req.body.address || {}) as any;
+    const resolvedShippingAddress = {
+      billing_customer_name: (rawAddr.billing_customer_name || rawAddr.firstName || rawAddr.name || req.user?.firstName || 'Customer').trim(),
+      billing_last_name: (rawAddr.billing_last_name || rawAddr.lastName || req.user?.lastName || 'REBELIVE').trim(),
+      billing_address: (rawAddr.billing_address || rawAddr.shipping_address || rawAddr.line1 || rawAddr.address1 || rawAddr.address || 'Address').trim(),
+      billing_address_2: (rawAddr.billing_address_2 || rawAddr.shipping_address_2 || rawAddr.line2 || rawAddr.address2 || '').trim(),
+      billing_city: (rawAddr.billing_city || rawAddr.shipping_city || rawAddr.city || rawAddr.district || 'City').trim(),
+      billing_pincode: (rawAddr.billing_pincode || rawAddr.shipping_pincode || rawAddr.postalCode || rawAddr.pincode || '110001').replace(/\D/g, '').slice(0, 6) || '110001',
+      billing_state: (rawAddr.billing_state || rawAddr.shipping_state || rawAddr.state || rawAddr.province || 'State').trim(),
+      billing_country: (rawAddr.billing_country || rawAddr.shipping_country || rawAddr.country || 'India').trim(),
+      billing_email: (rawAddr.billing_email || rawAddr.shipping_email || rawAddr.email || req.user?.email || 'customer@rebelive.co').trim(),
+      billing_phone: (rawAddr.billing_phone || rawAddr.shipping_phone || rawAddr.phone || (req.user as any)?.phone || '').trim(),
+      shipping_is_billing: true,
+      shipping_customer_name: (rawAddr.shipping_customer_name || rawAddr.firstName || rawAddr.name || req.user?.firstName || 'Customer').trim(),
+      shipping_last_name: (rawAddr.shipping_last_name || rawAddr.lastName || req.user?.lastName || 'REBELIVE').trim(),
+      shipping_address: (rawAddr.shipping_address || rawAddr.billing_address || rawAddr.line1 || rawAddr.address1 || rawAddr.address || 'Address').trim(),
+      shipping_address_2: (rawAddr.shipping_address_2 || rawAddr.billing_address_2 || rawAddr.line2 || rawAddr.address2 || '').trim(),
+      shipping_city: (rawAddr.shipping_city || rawAddr.billing_city || rawAddr.city || rawAddr.district || 'City').trim(),
+      shipping_pincode: (rawAddr.shipping_pincode || rawAddr.billing_pincode || rawAddr.postalCode || rawAddr.pincode || '110001').replace(/\D/g, '').slice(0, 6) || '110001',
+      shipping_state: (rawAddr.shipping_state || rawAddr.billing_state || rawAddr.state || rawAddr.province || 'State').trim(),
+      shipping_country: (rawAddr.shipping_country || rawAddr.billing_country || rawAddr.country || 'India').trim(),
+      shipping_email: (rawAddr.shipping_email || rawAddr.billing_email || rawAddr.email || req.user?.email || 'customer@rebelive.co').trim(),
+      shipping_phone: (rawAddr.shipping_phone || rawAddr.billing_phone || rawAddr.phone || (req.user as any)?.phone || '').trim(),
+      line1: (rawAddr.billing_address || rawAddr.shipping_address || rawAddr.line1 || rawAddr.address1 || rawAddr.address || 'Address').trim(),
+      line2: (rawAddr.billing_address_2 || rawAddr.shipping_address_2 || rawAddr.line2 || rawAddr.address2 || '').trim(),
+      city: (rawAddr.billing_city || rawAddr.shipping_city || rawAddr.city || rawAddr.district || 'City').trim(),
+      state: (rawAddr.billing_state || rawAddr.shipping_state || rawAddr.state || rawAddr.province || 'State').trim(),
+      postalCode: (rawAddr.billing_pincode || rawAddr.shipping_pincode || rawAddr.postalCode || rawAddr.pincode || '110001').replace(/\D/g, '').slice(0, 6) || '110001',
+      country: (rawAddr.billing_country || rawAddr.shipping_country || rawAddr.country || 'India').trim(),
+    };
 
     const cart = await prisma.cart.findFirst({
       where: { userId: uid(req) },
@@ -168,7 +186,7 @@ export async function placeOrder(req: Request, res: Response, next: NextFunction
           shippingAmount,
           total,
           couponId: cart.couponId ?? null,
-          shippingAddressId,
+          shippingAddress: resolvedShippingAddress,
           notes: notes ?? null,
           status: initialStatus,
           items: {
@@ -195,7 +213,7 @@ export async function placeOrder(req: Request, res: Response, next: NextFunction
             },
           },
         },
-        include: { items: true, shippingAddress: true },
+        include: { items: true },
       });
 
       for (const item of cart.items) {
@@ -254,12 +272,12 @@ export async function placeOrder(req: Request, res: Response, next: NextFunction
           phone: user?.phone || '9999999999',
         },
         address: {
-          line1: address.line1,
-          line2: address.line2 || '',
-          city: address.city,
-          state: address.state,
-          postalCode: address.postalCode,
-          country: address.country || 'India',
+          line1: resolvedShippingAddress.line1,
+          line2: resolvedShippingAddress.line2 || '',
+          city: resolvedShippingAddress.city,
+          state: resolvedShippingAddress.state,
+          postalCode: resolvedShippingAddress.postalCode,
+          country: resolvedShippingAddress.country || 'India',
         },
         items: order.items.map((i) => ({
           name: `${i.productName} - ${i.variantName}`,
@@ -295,7 +313,6 @@ export async function placeOrder(req: Request, res: Response, next: NextFunction
       },
       include: {
         items: true,
-        shippingAddress: true,
         payments: true,
         statusHistory: { orderBy: { createdAt: 'desc' } },
       },
@@ -326,7 +343,6 @@ export async function confirmPayment(req: Request, res: Response, next: NextFunc
       where: { id: orderId, userId: uid(req) },
       include: {
         user: true,
-        shippingAddress: true,
         items: true,
         payments: true,
       },
@@ -371,6 +387,7 @@ export async function confirmPayment(req: Request, res: Response, next: NextFunc
 
     const isAlreadyLive = Boolean(shiprocketOrderId && /^\d+$/.test(shiprocketOrderId) && !shiprocketOrderId.startsWith('SR-'));
     if (!isAlreadyLive || !trackingNumber) {
+      const addr: any = order.shippingAddress || {};
       const srRes = await shiprocketService.createAdhocOrder({
         orderNumber: order.orderNumber,
         createdAt: order.createdAt,
@@ -381,12 +398,12 @@ export async function confirmPayment(req: Request, res: Response, next: NextFunc
           phone: order.user?.phone || '9999999999',
         },
         address: {
-          line1: order.shippingAddress.line1,
-          line2: order.shippingAddress.line2 || '',
-          city: order.shippingAddress.city,
-          state: order.shippingAddress.state,
-          postalCode: order.shippingAddress.postalCode,
-          country: order.shippingAddress.country || 'India',
+          line1: addr.line1 || addr.billing_address || 'Address',
+          line2: addr.line2 || addr.billing_address_2 || '',
+          city: addr.city || addr.billing_city || 'City',
+          state: addr.state || addr.billing_state || 'State',
+          postalCode: addr.postalCode || addr.billing_pincode || '110001',
+          country: addr.country || addr.billing_country || 'India',
         },
         items: order.items.map((i) => ({
           name: `${i.productName} - ${i.variantName}`,
@@ -425,7 +442,6 @@ export async function confirmPayment(req: Request, res: Response, next: NextFunc
       },
       include: {
         items: true,
-        shippingAddress: true,
         payments: true,
         statusHistory: { orderBy: { createdAt: 'desc' } },
       },

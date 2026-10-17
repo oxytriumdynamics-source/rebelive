@@ -23,7 +23,7 @@ export async function getSubscriptions(req: Request, res: Response, next: NextFu
         where: { userId: uid(req) },
         orderBy: { createdAt: 'desc' },
         skip, take,
-        include: { plan: true, variant: { include: { product: true } }, address: true },
+        include: { plan: true, variant: { include: { product: true } } },
       }),
       prisma.subscription.count({ where: { userId: uid(req) } }),
     ]);
@@ -34,23 +34,12 @@ export async function getSubscriptions(req: Request, res: Response, next: NextFu
 // POST /api/v1/subscriptions
 export async function createSubscription(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { planId, variantId, quantity, addressId } = req.body as {
+    const { planId, variantId, quantity, shippingAddress } = req.body as {
       planId: string;
       variantId: string;
       quantity?: number;
-      addressId: string;
+      shippingAddress?: any;
     };
-
-    if (!addressId) {
-      throw new ValidationError('Shipping address is required');
-    }
-
-    const address = await prisma.address.findFirst({
-      where: { id: addressId, userId: uid(req) },
-    });
-    if (!address) {
-      throw new ValidationError('Invalid or unauthorized shipping address selected');
-    }
 
     const plan = await prisma.subscriptionPlan.findUnique({ where: { id: planId } });
     if (!plan || !plan.isActive) throw new NotFoundError('Subscription plan');
@@ -68,9 +57,9 @@ export async function createSubscription(req: Request, res: Response, next: Next
         quantity: safeQty,
         status: 'ACTIVE',
         nextDeliveryAt: nextDelivery,
-        addressId,
+        shippingAddress: shippingAddress || null,
       },
-      include: { plan: true, variant: { include: { product: true } }, address: true },
+      include: { plan: true, variant: { include: { product: true } } },
     });
 
     res.status(201).json({ status: 'success', data: subscription });

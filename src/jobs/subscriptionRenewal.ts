@@ -52,7 +52,7 @@ export function startSubscriptionRenewalJob(): void {
               taxAmount,
               shippingAmount: 0, // free shipping for subscriptions
               total,
-              shippingAddressId: sub.addressId,
+              shippingAddress: sub.shippingAddress || null,
               status: 'CONFIRMED',
               notes: `Auto-renewal for subscription ${sub.id}`,
               items: {
