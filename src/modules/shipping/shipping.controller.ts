@@ -21,6 +21,9 @@ async function resolveProductAndVariant(item: {
   variantId?: string | number;
   slug?: string;
   packSize?: number;
+  name?: string;
+  flavor?: string;
+  unitPrice?: number;
 }) {
   let variant: any = null;
   let product: any = null;
@@ -48,43 +51,90 @@ async function resolveProductAndVariant(item: {
     } catch {}
   }
 
-  // 3. Try resolving product by slug or name (e.g. "aviva", "apex", "capella", "variety")
-  const slugCandidate = String(item.slug || item.productId || '').trim().toLowerCase();
-  if (!product && slugCandidate) {
-    product = await prisma.product.findFirst({
-      where: {
-        OR: [
-          { slug: slugCandidate },
-          { name: { equals: slugCandidate, mode: 'insensitive' } },
-        ],
-      },
-      include: { variants: true },
-    });
+  // 3. Try resolving product by slug, name, or candidate strings
+  const candidates = [
+    item.slug,
+    typeof item.productId === 'string' ? item.productId : null,
+    typeof item.variantId === 'string' && !/^\d+$/.test(item.variantId) ? item.variantId : null,
+    item.flavor,
+    item.name,
+  ]
+    .filter(Boolean)
+    .map((s) => String(s).trim().toLowerCase());
+
+  const normalizedCandidates = new Set<string>();
+  for (const c of candidates) {
+    normalizedCandidates.add(c);
+    if (c.includes('trio') || c.includes('variety')) {
+      normalizedCandidates.add('variety');
+      normalizedCandidates.add('the rebel trio');
+    }
   }
 
-  // 4. If product found but variant not yet found, match variant by pack size
-  if (product && !variant && product.variants && product.variants.length > 0) {
-    if (item.packSize) {
-      variant =
-        product.variants.find(
-          (v: any) =>
-            v.sizeMl === item.packSize ||
-            v.name.toLowerCase().includes(`${item.packSize}`)
-        ) || product.variants[0];
-    } else {
-      variant = product.variants.find((v: any) => v.isDefault) || product.variants[0];
+  if (!product && normalizedCandidates.size > 0) {
+    for (const cand of normalizedCandidates) {
+      try {
+        product = await prisma.product.findFirst({
+          where: {
+            OR: [
+              { slug: cand },
+              { name: { equals: cand, mode: 'insensitive' } },
+              { slug: { contains: cand, mode: 'insensitive' } },
+              { name: { contains: cand, mode: 'insensitive' } },
+            ],
+          },
+          include: { variants: true },
+        });
+        if (product) break;
+      } catch {}
     }
+  }
+
+  // Helper to match a variant for a given product by packSize or price
+  const findVariantForProduct = (prod: any) => {
+    if (!prod || !prod.variants || prod.variants.length === 0) return null;
+    const pack = Number(item.packSize);
+    if (pack && pack > 0) {
+      const matched = prod.variants.find((v: any) => {
+        const skuUpper = (v.sku || '').toUpperCase();
+        const nameUpper = (v.name || '').toUpperCase();
+        return (
+          v.sizeMl === pack * 250 ||
+          v.sizeMl === pack ||
+          skuUpper.includes(`PACK-${pack}`) ||
+          skuUpper.endsWith(`-${pack}`) ||
+          skuUpper.includes(`-${pack}PK`) ||
+          new RegExp(`\\b${pack}\\b`, 'i').test(nameUpper)
+        );
+      });
+      if (matched) return matched;
+    }
+
+    if (item.unitPrice) {
+      const priceNum = Number(item.unitPrice);
+      const matchedByPrice = prod.variants.find((v: any) => Math.abs(v.price - priceNum) <= 1);
+      if (matchedByPrice) return matchedByPrice;
+    }
+
+    return prod.variants.find((v: any) => v.isDefault) || prod.variants[0];
+  };
+
+  // 4. If product found but variant not yet found, match variant by pack size
+  if (product && !variant) {
+    variant = findVariantForProduct(product);
   }
 
   // 5. Ultimate safe fallback: pull first active product in DB
   if (!product || !variant) {
-    const defaultProd = await prisma.product.findFirst({
-      include: { variants: true },
-    });
-    if (defaultProd && defaultProd.variants && defaultProd.variants.length > 0) {
-      product = defaultProd;
-      variant = defaultProd.variants.find((v: any) => v.isDefault) || defaultProd.variants[0];
-    }
+    try {
+      const defaultProd = await prisma.product.findFirst({
+        include: { variants: true },
+      });
+      if (defaultProd && defaultProd.variants && defaultProd.variants.length > 0) {
+        if (!product) product = defaultProd;
+        if (!variant) variant = findVariantForProduct(defaultProd);
+      }
+    } catch {}
   }
 
   return { product, variant };
@@ -153,21 +203,31 @@ export async function initiateFastrrCheckout(req: Request, res: Response, next: 
       const { product, variant } = await resolveProductAndVariant(item);
 
       // Unit price and SKU
-      const unitPrice = variant ? variant.price : item.unitPrice || 499;
-      const sku = variant ? variant.sku : `RBL-${(item.slug || product?.slug || 'CAN').toUpperCase()}-${item.packSize || 12}`;
+      const qty = Math.max(1, item.quantity || 1);
+      const unitPrice = item.unitPrice && Number(item.unitPrice) > 0
+        ? Number(item.unitPrice)
+        : (variant ? variant.price : 799);
+      const sku = variant ? variant.sku : `RBL-${(item.slug || product?.slug || 'CAN').toUpperCase()}-${item.packSize || 6}`;
       const name = product ? product.name : item.name || 'REBELIVE Energy';
       const flavor = product?.flavor || item.flavor || 'Signature';
       const prodId = product ? Number(product.id) : (item.productId ?? 1);
-      const varId = variant ? Number(variant.id) : (item.variantId ?? 101);
-      const qty = Math.max(1, item.quantity || 1);
+      const varId = variant ? Number(variant.id) : (item.variantId ?? 102);
       const totalItemPrice = unitPrice * qty;
+
+      const variantName = variant?.name
+        ? variant.name
+        : (item.packSize ? `${name} · ${item.packSize}-Pack Case` : `${name} - ${flavor}`);
+
+      const displayName = product && !variantName.toLowerCase().includes(product.name.toLowerCase())
+        ? `${product.name} · ${variantName}`
+        : variantName;
 
       subtotal += totalItemPrice;
 
       enrichedItems.push({
         productId: prodId,
         variantId: varId,
-        name,
+        name: displayName,
         flavor,
         sku,
         quantity: qty,
@@ -281,6 +341,7 @@ export async function generateFastrrToken(req: Request, res: Response, next: Nex
         quantity: number;
         unitPrice?: number;
         name?: string;
+        flavor?: string;
         image?: string;
       }>;
       couponCode?: string;
@@ -296,10 +357,21 @@ export async function generateFastrrToken(req: Request, res: Response, next: Nex
 
     for (const item of items) {
       const { product, variant } = await resolveProductAndVariant(item);
-      const unitPrice = variant ? variant.price : item.unitPrice || 499;
       const qty = Math.max(1, item.quantity || 1);
-      const varId = variant ? String(variant.id) : String(item.variantId || 101);
-      const name = product ? `${product.name} - ${variant?.name || 'Crate'}` : item.name || 'REBELIVE Energy';
+      const unitPrice = item.unitPrice && Number(item.unitPrice) > 0
+        ? Number(item.unitPrice)
+        : (variant ? variant.price : 799);
+      const varId = variant ? String(variant.id) : String(item.variantId || 102);
+
+      // Clean item title: e.g. "APEX · 6-Pack Case"
+      const variantName = variant?.name
+        ? variant.name
+        : (item.packSize ? `${item.name || product?.name || 'Rebelive'} · ${item.packSize}-Pack Case` : (item.name || 'Rebelive Energy'));
+
+      const displayName = product && !variantName.toLowerCase().includes(product.name.toLowerCase())
+        ? `${product.name} · ${variantName}`
+        : variantName;
+
       const imageUrl = item.image || product?.image || product?.canImage || 'https://rebelive.com/brand/APEX.webp';
 
       subtotal += unitPrice * qty;
@@ -309,7 +381,7 @@ export async function generateFastrrToken(req: Request, res: Response, next: Nex
         quantity: qty,
         catalog_data: {
           price: unitPrice,
-          name,
+          name: displayName,
           image_url: imageUrl,
         },
       });
@@ -514,7 +586,7 @@ export async function completeFastrrCheckout(req: Request, res: Response, next: 
       }
 
       const qty = Math.max(1, item.quantity || 1);
-      const unitPrice = variant.price;
+      const unitPrice = item.unitPrice && Number(item.unitPrice) > 0 ? Number(item.unitPrice) : variant.price;
       const itemTotal = unitPrice * qty;
       subtotal += itemTotal;
 
