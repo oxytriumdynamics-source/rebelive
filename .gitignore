@@ -51,3 +51,6 @@ coverage/
 .DS_Store
 .DS_Store?
 Thumbs.db
+
+# Shiprocket cached auth token
+.shiprocket-token.json

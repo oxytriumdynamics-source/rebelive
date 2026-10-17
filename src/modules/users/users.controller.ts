@@ -25,6 +25,115 @@ export async function getProfile(req: Request, res: Response, next: NextFunction
   } catch (err) { next(err); }
 }
 
+// ─── Phone Normalization & Order Merging Helper ───────────
+export function normalizePhone(rawPhone?: string | null): string {
+  if (!rawPhone) return '';
+  const digits = rawPhone.replace(/\D/g, '');
+  if (digits.length === 12 && digits.startsWith('91')) {
+    return digits.slice(2);
+  }
+  if (digits.length === 11 && digits.startsWith('0')) {
+    return digits.slice(1);
+  }
+  return digits.slice(-10);
+}
+
+/**
+ * Links past orders created via Fastrr / guest checkout to the given user based on phone number.
+ */
+export async function mergePastGuestOrdersByPhone(targetUserId: string, cleanPhone: string): Promise<number> {
+  if (!cleanPhone || cleanPhone.length < 10) return 0;
+
+  try {
+    // 1. Find all other users with matching phone (e.g. Fastrr-created guest users)
+    const otherUsers = await prisma.user.findMany({
+      where: {
+        id: { not: targetUserId },
+        phone: { contains: cleanPhone },
+      },
+      select: { id: true },
+    });
+    const otherUserIds = otherUsers.map((u) => u.id);
+
+    // 2. Find orders to reassign (either owned by those guest users or containing phone in notes)
+    const candidateOrders = await prisma.order.findMany({
+      where: {
+        userId: { not: targetUserId },
+        OR: [
+          ...(otherUserIds.length > 0 ? [{ userId: { in: otherUserIds } }] : []),
+          { notes: { contains: cleanPhone } },
+        ],
+      },
+      select: { id: true, shippingAddressId: true },
+    });
+
+    if (candidateOrders.length === 0) return 0;
+
+    const orderIds = candidateOrders.map((o) => o.id);
+    const addressIds = candidateOrders.map((o) => o.shippingAddressId).filter(Boolean);
+
+    // Reassign orders to the target user
+    const res = await prisma.order.updateMany({
+      where: { id: { in: orderIds } },
+      data: { userId: targetUserId },
+    });
+
+    // Also reassign delivery addresses so they appear in user's saved addresses
+    if (addressIds.length > 0) {
+      await prisma.address.updateMany({
+        where: { id: { in: addressIds } },
+        data: { userId: targetUserId },
+      });
+    }
+
+    return res.count;
+  } catch (err) {
+    console.warn('Non-fatal error merging past guest orders by phone:', err);
+    return 0;
+  }
+}
+
+// POST /api/v1/users/link-phone
+export async function linkPhone(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const rawPhone = (req.body?.phone || '').trim();
+    const cleanPhone = normalizePhone(rawPhone);
+
+    if (!cleanPhone || cleanPhone.length < 10) {
+      throw new ValidationError('Please enter a valid 10-digit mobile number');
+    }
+
+    const currentUserId = userId(req);
+
+    // Update phone on current user
+    const updatedUser = await prisma.user.update({
+      where: { id: currentUserId },
+      data: { phone: cleanPhone },
+      include: {
+        preferences: {
+          include: { personalityType: true },
+        },
+      },
+    });
+
+    // Reassign all previous guest orders placed with this phone number
+    const mergedCount = await mergePastGuestOrdersByPhone(currentUserId, cleanPhone);
+
+    const { passwordHash, refreshTokens, googleId, otpCode, otpExpiry, ...safe } = updatedUser as any;
+    res.json({
+      status: 'success',
+      message: `Phone number linked successfully. ${mergedCount} past orders synced to your account.`,
+      data: {
+        ...safe,
+        rebelId: formatRebelId(updatedUser.id),
+        mergedOrdersCount: mergedCount,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 // PATCH /api/v1/users/profile
 export async function updateProfile(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -32,11 +141,12 @@ export async function updateProfile(req: Request, res: Response, next: NextFunct
     const updateData: Record<string, string> = {};
     if (firstName !== undefined) updateData.firstName = firstName;
     if (lastName !== undefined) updateData.lastName = lastName;
-    if (phone !== undefined) updateData.phone = phone;
+    if (phone !== undefined) updateData.phone = normalizePhone(phone) || phone;
     if (avatarUrl !== undefined) updateData.avatarUrl = avatarUrl;
 
+    const currentUserId = userId(req);
     const user = await prisma.user.update({
-      where: { id: userId(req) },
+      where: { id: currentUserId },
       data: updateData,
       include: {
         preferences: {
@@ -44,8 +154,22 @@ export async function updateProfile(req: Request, res: Response, next: NextFunct
         },
       },
     });
+
+    // If phone was provided or updated, automatically link any matching past orders
+    let mergedCount = 0;
+    if (updateData.phone) {
+      mergedCount = await mergePastGuestOrdersByPhone(currentUserId, updateData.phone);
+    }
+
     const { passwordHash, refreshTokens, googleId, otpCode, otpExpiry, ...safe } = user as any;
-    res.json({ status: 'success', data: { ...safe, rebelId: formatRebelId(user.id) } });
+    res.json({
+      status: 'success',
+      data: {
+        ...safe,
+        rebelId: formatRebelId(user.id),
+        mergedOrdersCount: mergedCount,
+      },
+    });
   } catch (err) { next(err); }
 }
 

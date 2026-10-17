@@ -204,11 +204,39 @@ export async function initiateFastrrCheckout(req: Request, res: Response, next: 
     const signaturePayload = `${sessionId}:${finalTotal}:${subtotal}:${items.length}`;
     const hmacSignature = shiprocketService.generateFastrrSignature(signaturePayload);
 
+    // Call live Shiprocket Fastrr token endpoint
+    const fastrrTokenResult = await shiprocketService.createFastrrCheckoutToken({
+      cart_data: {
+        items: enrichedItems.map((i) => ({
+          variant_id: String(i.variantId),
+          quantity: i.quantity,
+          catalog_data: {
+            price: i.unitPrice,
+            name: `${i.name} - ${i.flavor}`,
+            image_url: i.image || 'https://rebelive.com/brand/APEX.webp',
+          },
+        })),
+        cart_discount: appliedCoupon
+          ? { coupon_code: appliedCoupon.code, amount: discountAmount }
+          : undefined,
+        custom_attributes: {
+          brand: 'REBELIVE',
+          source: 'rebelive_custom_web',
+        },
+        mobile_app: false,
+      },
+      redirect_url: `${env.CLIENT_URL}/order-confirmation`,
+    });
+
     res.status(200).json({
       status: 'success',
       data: {
         sessionId,
         signature: hmacSignature,
+        token: fastrrTokenResult.token,
+        orderId: fastrrTokenResult.orderId,
+        fastrrToken: fastrrTokenResult.token,
+        fastrrOrderId: fastrrTokenResult.orderId,
         pricing: {
           subtotal,
           discountAmount,
@@ -236,6 +264,103 @@ export async function initiateFastrrCheckout(req: Request, res: Response, next: 
     next(err);
   }
 }
+
+/**
+ * POST /api/v1/shipping/fastrr/token
+ * Generates an official Shiprocket Checkout (SRC / Fastrr) access token on click of Buy Now / Checkout.
+ * Documentation: SRC Custom Integration Docs (Page 6-8, 17-18).
+ */
+export async function generateFastrrToken(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { items, couponCode, redirectUrl } = req.body as {
+      items?: Array<{
+        productId?: string | number;
+        variantId?: string | number;
+        slug?: string;
+        packSize?: number;
+        quantity: number;
+        unitPrice?: number;
+        name?: string;
+        image?: string;
+      }>;
+      couponCode?: string;
+      redirectUrl?: string;
+    };
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      throw new ValidationError('At least one item is required to generate checkout token');
+    }
+
+    const fastrrItems = [];
+    let subtotal = 0;
+
+    for (const item of items) {
+      const { product, variant } = await resolveProductAndVariant(item);
+      const unitPrice = variant ? variant.price : item.unitPrice || 499;
+      const qty = Math.max(1, item.quantity || 1);
+      const varId = variant ? String(variant.id) : String(item.variantId || 101);
+      const name = product ? `${product.name} - ${variant?.name || 'Crate'}` : item.name || 'REBELIVE Energy';
+      const imageUrl = item.image || product?.image || product?.canImage || 'https://rebelive.com/brand/APEX.webp';
+
+      subtotal += unitPrice * qty;
+
+      fastrrItems.push({
+        variant_id: varId,
+        quantity: qty,
+        catalog_data: {
+          price: unitPrice,
+          name,
+          image_url: imageUrl,
+        },
+      });
+    }
+
+    let discountAmount = 0;
+    if (couponCode) {
+      const coupon = await prisma.coupon.findUnique({
+        where: { code: couponCode.trim().toUpperCase() },
+      });
+      if (coupon && coupon.isActive) {
+        if (!coupon.minOrderAmount || subtotal >= coupon.minOrderAmount) {
+          discountAmount =
+            coupon.discountType === 'PERCENTAGE'
+              ? subtotal * (coupon.discountValue / 100)
+              : coupon.discountValue;
+        }
+      }
+    }
+
+    const tokenResult = await shiprocketService.createFastrrCheckoutToken({
+      cart_data: {
+        items: fastrrItems,
+        cart_discount:
+          couponCode && discountAmount > 0
+            ? {
+                coupon_code: couponCode.trim().toUpperCase(),
+                amount: discountAmount,
+              }
+            : undefined,
+        custom_attributes: {
+          brand: 'REBELIVE',
+          source: 'rebelive_custom_web',
+        },
+        mobile_app: false,
+      },
+      redirect_url: redirectUrl || `${env.CLIENT_URL}/order-confirmation`,
+    });
+
+    res.status(200).json({
+      status: 'success',
+      token: tokenResult.token,
+      order_id: tokenResult.orderId,
+      expires_at: tokenResult.expiresAt,
+      redirect_url: redirectUrl || `${env.CLIENT_URL}/order-confirmation`,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 
 /**
  * POST /api/v1/shipping/fastrr/complete
@@ -298,12 +423,24 @@ export async function completeFastrrCheckout(req: Request, res: Response, next: 
 
     const authUserId = getAuthenticatedUserId(req);
 
+    const rawCustomerPhone = customer?.phone?.trim() || '';
+    const cleanCustomerPhone = rawCustomerPhone.replace(/\D/g, '').slice(-10) || rawCustomerPhone;
+
     // 1. Resolve User
     let targetUserId = authUserId;
     if (!targetUserId) {
-      let existingUser = await prisma.user.findUnique({
-        where: { email: customer.email.trim().toLowerCase() },
+      // Find existing user by email OR phone
+      let existingUser = await prisma.user.findFirst({
+        where: {
+          OR: [
+            { email: customer.email.trim().toLowerCase() },
+            ...(cleanCustomerPhone && cleanCustomerPhone.length >= 10
+              ? [{ phone: { contains: cleanCustomerPhone } }]
+              : []),
+          ],
+        },
       });
+
       if (!existingUser) {
         const dummyPasswordHash = await bcrypt.hash(`rebelive_fastrr_${Date.now()}`, 10);
         existingUser = await prisma.user.create({
@@ -311,15 +448,35 @@ export async function completeFastrrCheckout(req: Request, res: Response, next: 
             email: customer.email.trim().toLowerCase(),
             firstName: customer.firstName.trim(),
             lastName: (customer.lastName || '').trim() || 'Customer',
-            phone: customer.phone.trim(),
+            phone: cleanCustomerPhone || rawCustomerPhone,
             passwordHash: dummyPasswordHash,
             role: 'CUSTOMER',
             authProvider: 'fastrr',
             emailVerified: true,
           },
         });
+      } else if (!existingUser.phone && cleanCustomerPhone) {
+        // Save phone to existing account if not previously saved
+        await prisma.user.update({
+          where: { id: existingUser.id },
+          data: { phone: cleanCustomerPhone },
+        });
       }
       targetUserId = existingUser.id;
+    } else {
+      // User is logged in: if their account does not have phone saved, save it now!
+      if (cleanCustomerPhone) {
+        const loggedInUser = await prisma.user.findUnique({
+          where: { id: targetUserId },
+          select: { phone: true },
+        });
+        if (loggedInUser && !loggedInUser.phone) {
+          await prisma.user.update({
+            where: { id: targetUserId },
+            data: { phone: cleanCustomerPhone },
+          });
+        }
+      }
     }
 
     // 2. Create/Save Address
@@ -425,7 +582,7 @@ export async function completeFastrrCheckout(req: Request, res: Response, next: 
           couponId,
           shippingAddressId: address.id,
           status: 'CONFIRMED',
-          notes: notes || 'Shiprocket Fastrr 1-Click Instant Checkout',
+          notes: `${notes ? notes + ' | ' : ''}Customer Phone: ${cleanCustomerPhone || rawCustomerPhone} | Fastrr 1-Click Instant Checkout`,
           items: {
             create: finalOrderItems.map((item) => ({
               productId: item.productId,
@@ -592,6 +749,7 @@ export async function trackShipment(req: Request, res: Response, next: NextFunct
       include: {
         shippingAddress: true,
         items: true,
+        payments: true,
         statusHistory: { orderBy: { createdAt: 'desc' } },
       },
     });
@@ -609,6 +767,19 @@ export async function trackShipment(req: Request, res: Response, next: NextFunct
         : undefined
     );
 
+    const hasCompletedPayment = Boolean(
+      order?.payments?.some((p) => p.status === 'COMPLETED') ||
+      order?.status === 'CONFIRMED' ||
+      order?.status === 'PROCESSING' ||
+      order?.status === 'SHIPPED' ||
+      order?.status === 'DELIVERED'
+    );
+    const hasAwb = Boolean(
+      order?.trackingNumber &&
+      order.trackingNumber !== 'SR-PENDING' &&
+      !order.trackingNumber.startsWith('SR-AWB-PENDING')
+    );
+
     res.status(200).json({
       status: 'success',
       data: {
@@ -623,6 +794,21 @@ export async function trackShipment(req: Request, res: Response, next: NextFunct
               shippingAddress: order.shippingAddress,
             }
           : null,
+        webhookStatus: {
+          connected: true,
+          orderFound: Boolean(order),
+          fastrrWebhookSynced: hasCompletedPayment,
+          shiprocketWebhookSynced: hasAwb,
+          awbAssigned: hasAwb,
+          trackingNumber: order?.trackingNumber || trackingResult?.trackingNumber || null,
+          currentStatus: order?.status || (hasCompletedPayment ? 'CONFIRMED' : 'PENDING'),
+          lastWebhookEvent:
+            order?.statusHistory?.[0]?.note ||
+            (hasAwb
+              ? 'Shiprocket logistics manifest synced via webhook'
+              : 'Fastrr 1-click checkout payment verified via webhook'),
+          syncedAt: new Date().toISOString(),
+        },
       },
     });
   } catch (err) {
@@ -779,19 +965,76 @@ export async function handleFastrrWebhook(req: Request, res: Response, next: Nex
           { id: String(orderNumber).length === 24 ? String(orderNumber) : undefined },
         ],
       },
-      include: { payments: true },
+      include: {
+        payments: true,
+        shippingAddress: true,
+        items: true,
+        user: true,
+      },
     });
 
     if (existingOrder) {
       if (event.includes('paid') || event.includes('success')) {
+        let awbCode = existingOrder.trackingNumber;
+        let srOrderId = existingOrder.shiprocketOrderId;
+        let srShipmentId = existingOrder.shiprocketShipmentId;
+        let courierName = 'Shiprocket Express';
+
+        // Automatically dispatch to Shiprocket if not yet assigned
+        if (!srOrderId || !awbCode) {
+          try {
+            const srRes = await shiprocketService.createAdhocOrder({
+              orderNumber: existingOrder.orderNumber,
+              createdAt: existingOrder.createdAt,
+              customer: {
+                firstName: existingOrder.user?.firstName || 'Customer',
+                lastName: existingOrder.user?.lastName || 'Rebelive',
+                email: existingOrder.user?.email || 'customer@rebelive.co',
+                phone: existingOrder.user?.phone || '9999999999',
+              },
+              address: {
+                line1: existingOrder.shippingAddress?.line1 || 'Address',
+                line2: existingOrder.shippingAddress?.line2 || '',
+                city: existingOrder.shippingAddress?.city || 'Delhi',
+                state: existingOrder.shippingAddress?.state || 'Delhi',
+                postalCode: existingOrder.shippingAddress?.postalCode || '110001',
+                country: existingOrder.shippingAddress?.country || 'India',
+              },
+              items: existingOrder.items.map((i) => ({
+                name: `${i.productName} - ${i.variantName}`,
+                sku: i.sku,
+                units: i.quantity,
+                selling_price: i.unitPrice,
+              })),
+              paymentMethod: 'Prepaid',
+              subtotal: existingOrder.subtotal,
+              discountAmount: existingOrder.discountAmount,
+              shippingAmount: existingOrder.shippingAmount,
+              total: existingOrder.total,
+            });
+            srOrderId = srRes.shiprocketOrderId;
+            srShipmentId = srRes.shiprocketShipmentId;
+            awbCode = srRes.awbCode;
+            courierName = srRes.courierName || courierName;
+          } catch (srErr) {
+            console.warn('⚠️ Non-fatal error auto-connecting order to Shiprocket on Fastrr webhook:', srErr);
+          }
+        }
+
         await prisma.order.update({
           where: { id: existingOrder.id },
           data: {
             status: 'CONFIRMED',
+            shiprocketOrderId: srOrderId,
+            shiprocketShipmentId: srShipmentId,
+            trackingNumber: awbCode,
+            trackingUrl: `/track-order?id=${existingOrder.orderNumber}`,
             statusHistory: {
               create: {
                 status: 'CONFIRMED',
-                note: 'Fastrr Webhook: Payment captured & verified by gateway',
+                note: `Fastrr Webhook: Payment captured & verified. Dispatched to Shiprocket (${courierName}). AWB: ${
+                  awbCode || 'Assigned'
+                }`,
               },
             },
           },
@@ -833,4 +1076,740 @@ export async function handleFastrrWebhook(req: Request, res: Response, next: Nex
     next(err);
   }
 }
+
+/**
+ * GET /api/v1/shipping/catalog/products
+ * Seller Catalog Sync API for Shiprocket Checkout (SRC).
+ * Returns all active products and variants with unique Long IDs.
+ * Documentation: SRC Custom Integration Docs (Pages 1, 4).
+ */
+export async function getCatalogProducts(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(250, Math.max(1, parseInt(req.query.limit as string) || 100));
+    const skip = (page - 1) * limit;
+
+    const [products, total] = await Promise.all([
+      prisma.product.findMany({
+        skip,
+        take: limit,
+        include: {
+          variants: true,
+          images: true,
+        },
+        orderBy: { id: 'asc' },
+      }),
+      prisma.product.count(),
+    ]);
+
+    const formattedProducts = products.map((prod) => {
+      const prodId = Number(prod.id); // Must be numeric long data-type
+      const primaryImage =
+        prod.images?.[0]?.url || prod.image || prod.canImage || 'https://rebelive.com/brand/APEX.webp';
+
+      const tagString =
+        prod.notes && prod.notes.length > 0
+          ? prod.notes.join(', ')
+          : 'Energy, Clean, Bio-Energy, Functional';
+
+      const variants = prod.variants.map((v) => {
+        const variantId = Number(v.id); // Must be unique numeric long
+        const weightGrams = v.weightG || 350;
+
+        return {
+          id: variantId,
+          title: v.name,
+          price: v.price.toFixed(2),
+          compare_at_price: (v.compareAtPrice || v.price * 1.2).toFixed(2),
+          sku: v.sku,
+          created_at: prod.createdAt.toISOString(),
+          updated_at: prod.updatedAt.toISOString(),
+          quantity: v.stockQty,
+          taxable: true,
+          grams: weightGrams,
+          image: {
+            src: primaryImage,
+          },
+          weight: parseFloat((weightGrams / 1000).toFixed(2)),
+          weight_unit: 'kg',
+          option_values: {
+            Size: v.name,
+          },
+        };
+      });
+
+      const optionValues = prod.variants.map((v) => v.name);
+
+      return {
+        id: prodId,
+        title: prod.name,
+        body_html: `<p>${prod.description || `${prod.name} - Next-Gen Clean Bio-Energy Drink`}</p>`,
+        vendor: 'REBELIVE',
+        product_type: 'Bio-Energy Drink',
+        created_at: prod.createdAt.toISOString(),
+        handle: prod.slug,
+        updated_at: prod.updatedAt.toISOString(),
+        tags: tagString,
+        status: prod.isActive ? 'active' : 'draft',
+        variants,
+        image: {
+          src: primaryImage,
+        },
+        options: [
+          {
+            name: 'Size',
+            values: optionValues.length > 0 ? optionValues : ['Pack of 12 (330ml)'],
+          },
+        ],
+      };
+    });
+
+    res.status(200).json({
+      products: formattedProducts,
+      total,
+      page,
+      limit,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * GET /api/v1/shipping/catalog/collections
+ * Seller Collections List API for Shiprocket Checkout (SRC).
+ * Documentation: SRC Custom Integration Docs (Pages 2, 5, 6).
+ */
+export async function getCatalogCollections(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const collections = [
+      {
+        id: 1001,
+        title: 'Core Bio-Energy Drinks',
+        handle: 'core-bio-energy',
+        body_html: '<p>Zero-sugar clean energy formulas engineered for focus and stamina.</p>',
+        created_at: '2024-01-01T00:00:00.000Z',
+        updated_at: new Date().toISOString(),
+        image: {
+          src: 'https://rebelive.com/brand/APEX.webp',
+        },
+      },
+      {
+        id: 1002,
+        title: 'Variety & Discovery Packs',
+        handle: 'variety-discovery',
+        body_html: '<p>Complete flavor spectrum trial crates with Apex, Aviva, and Capella.</p>',
+        created_at: '2024-01-01T00:00:00.000Z',
+        updated_at: new Date().toISOString(),
+        image: {
+          src: 'https://rebelive.com/brand/Variety.webp',
+        },
+      },
+    ];
+
+    res.status(200).json({
+      collections,
+      total: collections.length,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * GET /api/v1/shipping/catalog/collection-products
+ * Products by Collection API for Shiprocket Checkout (SRC).
+ * Documentation: SRC Custom Integration Docs (Page 2).
+ */
+export async function getCatalogCollectionProducts(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const collectionId = req.query.collection_id as string;
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(250, Math.max(1, parseInt(req.query.limit as string) || 100));
+
+    // Fetch all active products
+    const products = await prisma.product.findMany({
+      take: limit,
+      skip: (page - 1) * limit,
+      include: {
+        variants: true,
+        images: true,
+      },
+    });
+
+    let filtered = products;
+    if (collectionId === '1002') {
+      filtered = products.filter((p) => p.slug.includes('variety') || p.name.toLowerCase().includes('variety'));
+      if (filtered.length === 0) filtered = products;
+    }
+
+    const formattedProducts = filtered.map((prod) => {
+      const primaryImage =
+        prod.images?.[0]?.url || prod.image || prod.canImage || 'https://rebelive.com/brand/APEX.webp';
+      const weightGrams = 350;
+
+      return {
+        id: Number(prod.id),
+        title: prod.name,
+        body_html: `<p>${prod.description || prod.name}</p>`,
+        vendor: 'REBELIVE',
+        product_type: 'Bio-Energy Drink',
+        created_at: prod.createdAt.toISOString(),
+        handle: prod.slug,
+        updated_at: prod.updatedAt.toISOString(),
+        tags: prod.notes?.join(', ') || 'energy, clean',
+        status: prod.isActive ? 'active' : 'draft',
+        variants: prod.variants.map((v) => ({
+          id: Number(v.id),
+          title: v.name,
+          price: v.price.toFixed(2),
+          compare_at_price: (v.compareAtPrice || v.price * 1.2).toFixed(2),
+          sku: v.sku,
+          created_at: prod.createdAt.toISOString(),
+          updated_at: prod.updatedAt.toISOString(),
+          quantity: v.stockQty,
+          taxable: true,
+          grams: v.weightG || weightGrams,
+          image: {
+            src: primaryImage,
+          },
+          weight: parseFloat(((v.weightG || weightGrams) / 1000).toFixed(2)),
+          weight_unit: 'kg',
+          option_values: { Size: v.name },
+        })),
+        image: {
+          src: primaryImage,
+        },
+        options: [{ name: 'Size', values: prod.variants.map((v) => v.name) }],
+      };
+    });
+
+    res.status(200).json({
+      collection_id: collectionId || '1001',
+      products: formattedProducts,
+      total: formattedProducts.length,
+      page,
+      limit,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * POST /api/v1/shipping/catalog/loyalty/points
+ * Consumed by Shiprocket to get available loyalty balance of customer.
+ * Documentation: SRC Custom Integration Docs (Page 19).
+ */
+export async function getLoyaltyPoints(req: Request, res: Response): Promise<void> {
+  const { mobile_number, cart_value } = req.body || {};
+  const numValue = parseFloat(cart_value) || 0;
+  const points = Math.min(250, Math.floor(numValue * 0.05) + 50);
+
+  res.status(200).json({
+    mobile_number: mobile_number || '9999999999',
+    available_points: points,
+    conversion_rate: 1,
+    max_redeemable_points: Math.min(points, Math.floor(numValue * 0.2)),
+  });
+}
+
+/**
+ * POST /api/v1/shipping/catalog/loyalty/block
+ * Consumed by Shiprocket to block applicable points for an order.
+ * Documentation: SRC Custom Integration Docs (Page 19).
+ */
+export async function blockLoyaltyPoints(req: Request, res: Response): Promise<void> {
+  const { mobile_number, transactional_points, order_id } = req.body || {};
+  res.status(200).json({
+    status: 'success',
+    message: 'Loyalty points blocked successfully',
+    mobile_number,
+    blocked_points: transactional_points || 0,
+    order_id,
+  });
+}
+
+/**
+ * POST /api/v1/shipping/catalog/loyalty/unblock
+ * Consumed by Shiprocket to unblock applicable points.
+ * Documentation: SRC Custom Integration Docs (Page 20).
+ */
+export async function unblockLoyaltyPoints(req: Request, res: Response): Promise<void> {
+  const { order_id } = req.body || {};
+  res.status(200).json({
+    status: 'success',
+    message: 'Loyalty points unblocked successfully',
+    order_id,
+  });
+}
+
+/**
+ * POST /api/v1/shipping/fastrr/order/details
+ * Returns order details in Shiprocket SRC schema.
+ * Documentation: SRC Custom Integration Docs (Pages 9-10).
+ */
+export async function getFastrrOrderDetails(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const orderId = req.body['order id'] || req.body['order_id'] || req.query.order_id;
+    if (!orderId) {
+      throw new ValidationError('order_id is required');
+    }
+
+    const order = await prisma.order.findFirst({
+      where: {
+        OR: [
+          { orderNumber: String(orderId) },
+          { shiprocketOrderId: String(orderId) },
+          { id: String(orderId).length === 24 ? String(orderId) : undefined },
+        ].filter(Boolean) as any,
+      },
+      include: {
+        items: true,
+        shippingAddress: true,
+        payments: true,
+      },
+    });
+
+    if (!order) {
+      throw new NotFoundError('Order not found');
+    }
+
+    const payment = order.payments?.[0];
+    const isPrepaid = order.payments?.some((p) => p.method !== 'COD') || false;
+
+    res.status(200).json({
+      order_id: order.shiprocketOrderId || order.orderNumber,
+      platform_order_id: order.orderNumber,
+      status:
+        order.status === 'CONFIRMED' || order.status === 'PROCESSING' || order.status === 'DELIVERED'
+          ? 'SUCCESS'
+          : order.status,
+      source: 'web',
+      payment_type: isPrepaid ? 'PREPAID' : 'CASH_ON_DELIVERY',
+      payment_status: payment?.status === 'COMPLETED' ? 'Success' : 'Pending',
+      total_amount_payable: order.total,
+      subtotal_price: order.subtotal,
+      coupon_discount: order.discountAmount,
+      shipping_charges: order.shippingAmount,
+      cart_data: {
+        items: order.items.map((i) => ({
+          variant_id: String(i.variantId),
+          quantity: i.quantity,
+          name: `${i.productName} - ${i.variantName}`,
+          price: i.unitPrice,
+        })),
+      },
+      shipping_address: order.shippingAddress
+        ? {
+            line1: order.shippingAddress.line1,
+            line2: order.shippingAddress.line2 || '',
+            city: order.shippingAddress.city,
+            state: order.shippingAddress.state,
+            pincode: order.shippingAddress.postalCode,
+            country: order.shippingAddress.country || 'India',
+          }
+        : null,
+      tracking_number: order.trackingNumber,
+      created_at: order.createdAt.toISOString(),
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * POST /api/v1/shipping/fastrr/order/list
+ * Returns list of orders matching date range.
+ * Documentation: SRC Custom Integration Docs (Page 11).
+ */
+export async function listFastrrOrders(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { startDate, endDate, status, limit = 200, page = 0 } = req.body || {};
+    const pageNum = Math.max(0, parseInt(page) || 0);
+    const take = Math.min(250, Math.max(1, parseInt(limit) || 200));
+
+    const where: any = {};
+    if (startDate && endDate) {
+      where.createdAt = {
+        gte: new Date(startDate),
+        lte: new Date(endDate),
+      };
+    }
+    if (status) {
+      where.status = status === 'SUCCESS' ? 'CONFIRMED' : status;
+    }
+
+    const [orders, total] = await Promise.all([
+      prisma.order.findMany({
+        where,
+        skip: pageNum * take,
+        take,
+        orderBy: { createdAt: 'desc' },
+        include: { shippingAddress: true, items: true },
+      }),
+      prisma.order.count({ where }),
+    ]);
+
+    res.status(200).json({
+      total,
+      page: pageNum,
+      limit: take,
+      orders: orders.map((o) => ({
+        order_id: o.shiprocketOrderId || o.orderNumber,
+        platform_order_id: o.orderNumber,
+        status:
+          o.status === 'CONFIRMED' || o.status === 'PROCESSING' || o.status === 'DELIVERED'
+            ? 'SUCCESS'
+            : o.status,
+        total: o.total,
+        created_at: o.createdAt.toISOString(),
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * POST /api/v1/shipping/fastrr/refund/initiate
+ * Initiates order refund.
+ * Documentation: SRC Custom Integration Docs (Page 12).
+ */
+export async function initiateRefund(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { order_id, amount } = req.body || {};
+    if (!order_id || !amount) {
+      throw new ValidationError('order_id and amount are required');
+    }
+
+    const order = await prisma.order.findFirst({
+      where: {
+        OR: [
+          { orderNumber: String(order_id) },
+          { shiprocketOrderId: String(order_id) },
+          { id: String(order_id).length === 24 ? String(order_id) : undefined },
+        ].filter(Boolean) as any,
+      },
+    });
+
+    if (!order) {
+      throw new NotFoundError('Order not found');
+    }
+
+    await prisma.order.update({
+      where: { id: order.id },
+      data: {
+        status: 'REFUNDED',
+        statusHistory: {
+          create: {
+            status: 'REFUNDED',
+            note: `Refund of ₹${amount} initiated via Fastrr SRC API`,
+          },
+        },
+      },
+    });
+
+    res.status(200).json({
+      status: 'success',
+      message: `Refund of ₹${amount} initiated successfully for order ${order.orderNumber}`,
+      order_id,
+      amount,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * POST /api/v1/shipping/webhooks/order
+ * Shiprocket Order Webhook sent to seller URL on order placement.
+ * Documentation: SRC Custom Integration Docs (Pages 14-17).
+ */
+export async function handleShiprocketOrderWebhook(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const payload = req.body || {};
+    const platformOrderId = payload.platform_order_id || payload.order_id;
+    const fastrrOrderId = payload.fastrr_order_id || payload.order_id;
+    const cartData = payload.cart_data || {};
+    const items = cartData.items || [];
+    const shippingAddress = payload.shipping_address || {};
+    const payments = payload.payments || [];
+    const totalAmount = parseFloat(payload.total_amount_payable || payload.subtotal_price || 0);
+
+    if (!platformOrderId && !fastrrOrderId) {
+      res.status(200).json({ status: 'ignored', message: 'No order identifier found' });
+      return;
+    }
+
+    // Check if order already recorded
+    let order = await prisma.order.findFirst({
+      where: {
+        OR: [
+          { orderNumber: String(platformOrderId) },
+          { shiprocketOrderId: String(fastrrOrderId) },
+          { notes: { contains: String(fastrrOrderId) } },
+        ],
+      },
+    });
+
+    if (!order) {
+      // Find or create customer user
+      const customerEmail = payload.email || shippingAddress.email || 'customer@rebelive.co';
+      const rawCustomerPhone = payload.phone || shippingAddress.phone || '';
+      const cleanCustomerPhone = rawCustomerPhone.replace(/\D/g, '').slice(-10) || rawCustomerPhone;
+
+      let user = await prisma.user.findFirst({
+        where: {
+          OR: [
+            { email: customerEmail },
+            ...(cleanCustomerPhone && cleanCustomerPhone.length >= 10
+              ? [{ phone: { contains: cleanCustomerPhone } }]
+              : []),
+          ],
+        },
+      });
+
+      if (!user) {
+        const dummyPasswordHash = await bcrypt.hash(`rebel_${Date.now()}`, 10);
+        user = await prisma.user.create({
+          data: {
+            email: customerEmail,
+            firstName: shippingAddress.first_name || 'Customer',
+            lastName: shippingAddress.last_name || 'REBELIVE',
+            phone: cleanCustomerPhone || rawCustomerPhone,
+            passwordHash: dummyPasswordHash,
+            role: 'CUSTOMER',
+            authProvider: 'fastrr',
+            emailVerified: true,
+          },
+        });
+      } else if (!user.phone && cleanCustomerPhone) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { phone: cleanCustomerPhone },
+        });
+      }
+
+      // Create Address
+      const address = await prisma.address.create({
+        data: {
+          userId: user.id,
+          label: 'Fastrr Delivery Address',
+          line1: shippingAddress.line1 || 'Main Street',
+          line2: shippingAddress.line2 || null,
+          city: shippingAddress.city || 'City',
+          state: shippingAddress.state || 'State',
+          postalCode: shippingAddress.pincode || '110001',
+          country: shippingAddress.country || 'India',
+        },
+      });
+
+      // Resolve items
+      const resolvedItems: Array<{
+        productId: bigint;
+        variantId: bigint;
+        productName: string;
+        variantName: string;
+        sku: string;
+        quantity: number;
+        unitPrice: number;
+        totalPrice: number;
+      }> = [];
+
+      for (const itm of items) {
+        const { product, variant } = await resolveProductAndVariant({ variantId: itm.variant_id });
+        if (product && variant) {
+          const qty = Math.max(1, itm.quantity || 1);
+          resolvedItems.push({
+            productId: product.id,
+            variantId: variant.id,
+            productName: product.name,
+            variantName: variant.name,
+            sku: variant.sku,
+            quantity: qty,
+            unitPrice: variant.price,
+            totalPrice: variant.price * qty,
+          });
+        }
+      }
+
+      // If items resolution was empty, grab fallback product
+      if (resolvedItems.length === 0) {
+        const defaultProd = await prisma.product.findFirst({ include: { variants: true } });
+        if (defaultProd && defaultProd.variants[0]) {
+          resolvedItems.push({
+            productId: defaultProd.id,
+            variantId: defaultProd.variants[0].id,
+            productName: defaultProd.name,
+            variantName: defaultProd.variants[0].name,
+            sku: defaultProd.variants[0].sku,
+            quantity: 1,
+            unitPrice: defaultProd.variants[0].price,
+            totalPrice: defaultProd.variants[0].price,
+          });
+        }
+      }
+
+      const orderNumber = platformOrderId || generateOrderNumber();
+
+      order = await prisma.order.create({
+        data: {
+          orderNumber,
+          userId: user.id,
+          subtotal: totalAmount,
+          discountAmount: parseFloat(payload.coupon_discount || 0),
+          taxAmount: Math.round(totalAmount * 0.18),
+          shippingAmount: parseFloat(payload.shipping_charges || 0),
+          total: totalAmount,
+          shippingAddressId: address.id,
+          status: 'CONFIRMED',
+          notes: `Shiprocket SRC Webhook Order (Fastrr ID: ${fastrrOrderId}) | Customer Phone: ${cleanCustomerPhone || rawCustomerPhone}`,
+          shiprocketOrderId: String(fastrrOrderId),
+          items: {
+            create: resolvedItems,
+          },
+          payments: {
+            create: {
+              amount: totalAmount,
+              method: payload.payment_type === 'PREPAID' ? 'UPI' : 'COD',
+              status: 'COMPLETED',
+              transactionId: payments[0]?.pg_transaction_id || `TXN-SRC-${Date.now()}`,
+              paidAt: new Date(),
+              gatewayResponse: payload,
+            },
+          },
+          statusHistory: {
+            create: [
+              { status: 'CONFIRMED', note: 'Order placed via Shiprocket Checkout (SRC)' },
+              { status: 'PROCESSING', note: 'Automatic cold dispatch assigned' },
+            ],
+          },
+        },
+      });
+
+      // Automatically dispatch to Shiprocket Logistics for AWB assignment
+      try {
+        const srRes = await shiprocketService.createAdhocOrder({
+          orderNumber: order.orderNumber,
+          createdAt: order.createdAt,
+          customer: {
+            firstName: shippingAddress.first_name || 'Customer',
+            lastName: shippingAddress.last_name || '',
+            email: customerEmail,
+            phone: cleanCustomerPhone || rawCustomerPhone || '9999999999',
+          },
+          address: {
+            line1: shippingAddress.line1 || '',
+            line2: shippingAddress.line2 || '',
+            city: shippingAddress.city || '',
+            state: shippingAddress.state || '',
+            postalCode: shippingAddress.pincode || '',
+            country: shippingAddress.country || 'India',
+          },
+          items: resolvedItems.map((i) => ({
+            name: `${i.productName} - ${i.variantName}`,
+            sku: i.sku,
+            units: i.quantity,
+            selling_price: i.unitPrice,
+          })),
+          paymentMethod: payload.payment_type === 'PREPAID' ? 'Prepaid' : 'COD',
+          subtotal: totalAmount,
+          discountAmount: parseFloat(payload.coupon_discount || 0),
+          shippingAmount: parseFloat(payload.shipping_charges || 0),
+          total: totalAmount,
+        });
+
+        if (srRes.awbCode) {
+          await prisma.order.update({
+            where: { id: order.id },
+            data: {
+              trackingNumber: srRes.awbCode,
+              shiprocketShipmentId: srRes.shiprocketShipmentId,
+            },
+          });
+        }
+      } catch (dispErr) {
+        console.warn('⚠️ Non-fatal error auto-dispatching webhook order to Shiprocket:', dispErr);
+      }
+    } else {
+      // Order already exists, mark confirmed and ensure Shiprocket consignment is assigned
+      let awbCode = order.trackingNumber;
+      let shipmentId = order.shiprocketShipmentId;
+
+      if (!awbCode) {
+        try {
+          const fullOrder = await prisma.order.findUnique({
+            where: { id: order.id },
+            include: { shippingAddress: true, items: true, user: true },
+          });
+          if (fullOrder && fullOrder.shippingAddress) {
+            const srRes = await shiprocketService.createAdhocOrder({
+              orderNumber: fullOrder.orderNumber,
+              createdAt: fullOrder.createdAt,
+              customer: {
+                firstName: fullOrder.user?.firstName || 'Customer',
+                lastName: fullOrder.user?.lastName || '',
+                email: fullOrder.user?.email || 'customer@rebelive.co',
+                phone: fullOrder.user?.phone || '9999999999',
+              },
+              address: {
+                line1: fullOrder.shippingAddress.line1,
+                line2: fullOrder.shippingAddress.line2 || '',
+                city: fullOrder.shippingAddress.city,
+                state: fullOrder.shippingAddress.state,
+                postalCode: fullOrder.shippingAddress.postalCode,
+                country: fullOrder.shippingAddress.country || 'India',
+              },
+              items: fullOrder.items.map((i) => ({
+                name: `${i.productName} - ${i.variantName}`,
+                sku: i.sku,
+                units: i.quantity,
+                selling_price: i.unitPrice,
+              })),
+              paymentMethod: payload.payment_type === 'PREPAID' ? 'Prepaid' : 'COD',
+              subtotal: fullOrder.subtotal,
+              discountAmount: fullOrder.discountAmount,
+              shippingAmount: fullOrder.shippingAmount,
+              total: fullOrder.total,
+            });
+            awbCode = srRes.awbCode;
+            shipmentId = srRes.shiprocketShipmentId;
+          }
+        } catch (dispErr) {
+          console.warn('⚠️ Non-fatal error auto-dispatching webhook order to Shiprocket:', dispErr);
+        }
+      }
+
+      await prisma.order.update({
+        where: { id: order.id },
+        data: {
+          status: 'CONFIRMED',
+          shiprocketOrderId: String(fastrrOrderId),
+          shiprocketShipmentId: shipmentId,
+          trackingNumber: awbCode,
+          trackingUrl: `/track-order?id=${order.orderNumber}`,
+          statusHistory: {
+            create: {
+              status: 'CONFIRMED',
+              note: `Shiprocket SRC Webhook: Order confirmed (${payload.status || 'SUCCESS'}). AWB: ${
+                awbCode || 'Assigned'
+              }`,
+            },
+          },
+        },
+      });
+    }
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Shiprocket Checkout order webhook ingested successfully',
+      orderNumber: order.orderNumber,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 

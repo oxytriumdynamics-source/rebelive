@@ -9,6 +9,8 @@ router.use(authenticate);
 router.get('/', ordersController.getOrders);
 router.get('/:id', ordersController.getOrder);
 router.post('/', ordersController.placeOrder);
+router.post('/:id/confirm-payment', ordersController.confirmPayment);
+router.post('/:id/pay', ordersController.confirmPayment);
 router.post('/:id/cancel', ordersController.cancelOrder);
 
 export default router;

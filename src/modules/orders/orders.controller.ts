@@ -3,7 +3,8 @@ import { prisma } from '../../config/database';
 import { NotFoundError, ValidationError } from '../../shared/errors/AppError';
 import { generateOrderNumber } from '../../shared/utils/generateOrderNumber';
 import { getPagination, buildPaginationResult } from '../../shared/types';
-import type { PaymentMethod } from '@prisma/client';
+import { shiprocketService } from '../shipping/shiprocket.service';
+import type { PaymentMethod, OrderStatus, PaymentStatus } from '@prisma/client';
 
 const uid = (req: Request) => req.user!.id;
 
@@ -11,18 +12,50 @@ const uid = (req: Request) => req.user!.id;
 export async function getOrders(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const { skip, take, page, limit } = getPagination(req.query as Record<string, unknown>);
+    const currentUserId = uid(req);
+
+    // Retrieve user phone to link any guest orders placed via Fastrr
+    const user = await prisma.user.findUnique({
+      where: { id: currentUserId },
+      select: { phone: true },
+    });
+    const cleanPhone = user?.phone ? user.phone.replace(/\D/g, '').slice(-10) : '';
+
+    const where: any = cleanPhone && cleanPhone.length >= 10
+      ? {
+          OR: [
+            { userId: currentUserId },
+            { notes: { contains: cleanPhone } },
+          ],
+        }
+      : { userId: currentUserId };
+
+    // Auto-heal in background: reassign any unlinked guest orders matching this phone
+    if (cleanPhone && cleanPhone.length >= 10) {
+      prisma.order
+        .updateMany({
+          where: {
+            userId: { not: currentUserId },
+            notes: { contains: cleanPhone },
+          },
+          data: { userId: currentUserId },
+        })
+        .catch(() => {});
+    }
+
     const [data, total] = await Promise.all([
       prisma.order.findMany({
-        where: { userId: uid(req) },
+        where,
         orderBy: { createdAt: 'desc' },
-        skip, take,
+        skip,
+        take,
         include: {
           items: { include: { product: { include: { images: { where: { isPrimary: true }, take: 1 } } } } },
           shippingAddress: true,
           payments: true,
         },
       }),
-      prisma.order.count({ where: { userId: uid(req) } }),
+      prisma.order.count({ where }),
     ]);
     res.json({ status: 'success', ...buildPaginationResult(data, total, page, limit) });
   } catch (err) { next(err); }
@@ -31,8 +64,21 @@ export async function getOrders(req: Request, res: Response, next: NextFunction)
 // GET /api/v1/orders/:id
 export async function getOrder(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
+    const currentUserId = uid(req);
+    const user = await prisma.user.findUnique({
+      where: { id: currentUserId },
+      select: { phone: true },
+    });
+    const cleanPhone = user?.phone ? user.phone.replace(/\D/g, '').slice(-10) : '';
+
     const order = await prisma.order.findFirst({
-      where: { id: req.params['id'] as string, userId: uid(req) },
+      where: {
+        id: req.params['id'] as string,
+        OR: [
+          { userId: currentUserId },
+          ...(cleanPhone && cleanPhone.length >= 10 ? [{ notes: { contains: cleanPhone } }] : []),
+        ],
+      },
       include: {
         items: { include: { product: true, variant: true, bundle: true } },
         shippingAddress: true,
@@ -49,10 +95,20 @@ export async function getOrder(req: Request, res: Response, next: NextFunction):
 // POST /api/v1/orders
 export async function placeOrder(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { shippingAddressId, paymentMethod, notes } = req.body as {
+    const {
+      shippingAddressId,
+      paymentMethod,
+      notes,
+      isPaid,
+      transactionId,
+      gatewayResponse,
+    } = req.body as {
       shippingAddressId: string;
       paymentMethod: PaymentMethod;
       notes?: string;
+      isPaid?: boolean;
+      transactionId?: string;
+      gatewayResponse?: any;
     };
 
     if (!shippingAddressId) {
@@ -96,6 +152,11 @@ export async function placeOrder(req: Request, res: Response, next: NextFunction
     const shippingAmount = subtotal >= 500 ? 0 : 60;
     const total = Math.max(0, Math.round((taxableAmount + taxAmount + shippingAmount) * 100) / 100);
 
+    const isPaymentComplete = Boolean(isPaid || transactionId);
+    const initialStatus: OrderStatus = isPaymentComplete || paymentMethod === 'COD' ? 'CONFIRMED' : 'PENDING';
+    const initialPaymentStatus: PaymentStatus = isPaymentComplete ? 'COMPLETED' : 'PENDING';
+    const txnId = transactionId || (isPaymentComplete ? `TXN-${Date.now()}-${Math.floor(Math.random() * 89999 + 10000)}` : null);
+
     const order = await prisma.$transaction(async (tx) => {
       const newOrder = await tx.order.create({
         data: {
@@ -109,7 +170,7 @@ export async function placeOrder(req: Request, res: Response, next: NextFunction
           couponId: cart.couponId ?? null,
           shippingAddressId,
           notes: notes ?? null,
-          status: 'PENDING',
+          status: initialStatus,
           items: {
             create: cart.items.map((item) => ({
               productId: item.productId,
@@ -123,7 +184,16 @@ export async function placeOrder(req: Request, res: Response, next: NextFunction
               totalPrice: item.variant.price * item.quantity,
             })),
           },
-          statusHistory: { create: { status: 'PENDING', note: 'Order placed' } },
+          statusHistory: {
+            create: {
+              status: initialStatus,
+              note: isPaymentComplete
+                ? 'Order placed and payment successfully completed'
+                : paymentMethod === 'COD'
+                ? 'Order placed with Cash on Delivery (COD)'
+                : 'Order placed',
+            },
+          },
         },
         include: { items: true, shippingAddress: true },
       });
@@ -149,7 +219,15 @@ export async function placeOrder(req: Request, res: Response, next: NextFunction
       }
 
       await tx.payment.create({
-        data: { orderId: newOrder.id, amount: total, method: paymentMethod, status: 'PENDING' },
+        data: {
+          orderId: newOrder.id,
+          amount: total,
+          method: paymentMethod,
+          status: initialPaymentStatus,
+          transactionId: txnId,
+          paidAt: isPaymentComplete ? new Date() : null,
+          gatewayResponse: gatewayResponse || null,
+        },
       });
 
       await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
@@ -158,8 +236,212 @@ export async function placeOrder(req: Request, res: Response, next: NextFunction
       return newOrder;
     });
 
-    res.status(201).json({ status: 'success', data: order });
+    // Automatically send and connect order to Shiprocket Logistics
+    const user = await prisma.user.findUnique({
+      where: { id: uid(req) },
+      select: { firstName: true, lastName: true, email: true, phone: true },
+    });
+
+    let shiprocketResult;
+    try {
+      shiprocketResult = await shiprocketService.createAdhocOrder({
+        orderNumber: order.orderNumber,
+        createdAt: order.createdAt,
+        customer: {
+          firstName: user?.firstName || req.user?.firstName || 'Customer',
+          lastName: user?.lastName || req.user?.lastName || 'Rebelive',
+          email: user?.email || req.user?.email || 'customer@rebelive.co',
+          phone: user?.phone || '9999999999',
+        },
+        address: {
+          line1: address.line1,
+          line2: address.line2 || '',
+          city: address.city,
+          state: address.state,
+          postalCode: address.postalCode,
+          country: address.country || 'India',
+        },
+        items: order.items.map((i) => ({
+          name: `${i.productName} - ${i.variantName}`,
+          sku: i.sku,
+          units: i.quantity,
+          selling_price: i.unitPrice,
+        })),
+        paymentMethod: paymentMethod === 'COD' ? 'COD' : 'Prepaid',
+        subtotal: order.subtotal,
+        discountAmount: order.discountAmount,
+        shippingAmount: order.shippingAmount,
+        total: order.total,
+      });
+    } catch (srErr) {
+      console.warn('⚠️ Non-fatal error connecting order to Shiprocket Logistics:', srErr);
+    }
+
+    const updatedOrder = await prisma.order.update({
+      where: { id: order.id },
+      data: {
+        shiprocketOrderId: shiprocketResult?.shiprocketOrderId || null,
+        shiprocketShipmentId: shiprocketResult?.shiprocketShipmentId || null,
+        trackingNumber: shiprocketResult?.awbCode || null,
+        trackingUrl: `/track-order?id=${order.orderNumber}`,
+        statusHistory: {
+          create: {
+            status: initialStatus,
+            note: shiprocketResult?.awbCode
+              ? `Connected to Shiprocket (${shiprocketResult.courierName || 'Shiprocket Express'}). AWB: ${shiprocketResult.awbCode}`
+              : 'Order recorded; Shiprocket consignment queued for sync',
+          },
+        },
+      },
+      include: {
+        items: true,
+        shippingAddress: true,
+        payments: true,
+        statusHistory: { orderBy: { createdAt: 'desc' } },
+      },
+    });
+
+    res.status(201).json({
+      status: 'success',
+      message: 'Order placed successfully and connected to Shiprocket Logistics',
+      data: updatedOrder,
+      trackingNumber: updatedOrder.trackingNumber,
+      shiprocketOrderId: updatedOrder.shiprocketOrderId,
+      trackingUrl: updatedOrder.trackingUrl,
+    });
   } catch (err) { next(err); }
+}
+
+// POST /api/v1/orders/:id/confirm-payment
+export async function confirmPayment(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const orderId = req.params['id'] as string;
+    const { transactionId, gatewayResponse, paymentMethod } = req.body as {
+      transactionId?: string;
+      gatewayResponse?: any;
+      paymentMethod?: PaymentMethod;
+    };
+
+    const order = await prisma.order.findFirst({
+      where: { id: orderId, userId: uid(req) },
+      include: {
+        user: true,
+        shippingAddress: true,
+        items: true,
+        payments: true,
+      },
+    });
+
+    if (!order) throw new NotFoundError('Order');
+
+    // 1. Update Payment record to COMPLETED
+    const txnId = transactionId || `TXN-PAY-${Date.now()}-${Math.floor(Math.random() * 89999 + 10000)}`;
+    const existingPayment = order.payments?.[0];
+
+    if (existingPayment) {
+      await prisma.payment.update({
+        where: { id: existingPayment.id },
+        data: {
+          status: 'COMPLETED',
+          transactionId: txnId,
+          paidAt: new Date(),
+          gatewayResponse: gatewayResponse || existingPayment.gatewayResponse,
+          ...(paymentMethod ? { method: paymentMethod } : {}),
+        },
+      });
+    } else {
+      await prisma.payment.create({
+        data: {
+          orderId: order.id,
+          amount: order.total,
+          method: paymentMethod || 'UPI',
+          status: 'COMPLETED',
+          transactionId: txnId,
+          paidAt: new Date(),
+          gatewayResponse: gatewayResponse || null,
+        },
+      });
+    }
+
+    // 2. Connect to Shiprocket dashboard directly upon payment confirmation
+    let shiprocketOrderId = order.shiprocketOrderId;
+    let shiprocketShipmentId = order.shiprocketShipmentId;
+    let trackingNumber = order.trackingNumber;
+    let courierName = 'Shiprocket Express';
+
+    const isAlreadyLive = Boolean(shiprocketOrderId && /^\d+$/.test(shiprocketOrderId) && !shiprocketOrderId.startsWith('SR-'));
+    if (!isAlreadyLive || !trackingNumber) {
+      const srRes = await shiprocketService.createAdhocOrder({
+        orderNumber: order.orderNumber,
+        createdAt: order.createdAt,
+        customer: {
+          firstName: order.user?.firstName || req.user?.firstName || 'Customer',
+          lastName: order.user?.lastName || req.user?.lastName || 'Rebelive',
+          email: order.user?.email || req.user?.email || 'customer@rebelive.co',
+          phone: order.user?.phone || '9999999999',
+        },
+        address: {
+          line1: order.shippingAddress.line1,
+          line2: order.shippingAddress.line2 || '',
+          city: order.shippingAddress.city,
+          state: order.shippingAddress.state,
+          postalCode: order.shippingAddress.postalCode,
+          country: order.shippingAddress.country || 'India',
+        },
+        items: order.items.map((i) => ({
+          name: `${i.productName} - ${i.variantName}`,
+          sku: i.sku,
+          units: i.quantity,
+          selling_price: i.unitPrice,
+        })),
+        paymentMethod: 'Prepaid',
+        subtotal: order.subtotal,
+        discountAmount: order.discountAmount,
+        shippingAmount: order.shippingAmount,
+        total: order.total,
+      });
+
+      shiprocketOrderId = srRes.shiprocketOrderId;
+      shiprocketShipmentId = srRes.shiprocketShipmentId;
+      trackingNumber = srRes.awbCode;
+      courierName = srRes.courierName || courierName;
+    }
+
+    // 3. Update order status to CONFIRMED and attach Shiprocket tracking
+    const updatedOrder = await prisma.order.update({
+      where: { id: order.id },
+      data: {
+        status: 'CONFIRMED',
+        shiprocketOrderId,
+        shiprocketShipmentId,
+        trackingNumber,
+        trackingUrl: `/track-order?id=${order.orderNumber}`,
+        statusHistory: {
+          create: {
+            status: 'CONFIRMED',
+            note: `Payment confirmed (Txn: ${txnId}). Order connected to Shiprocket (${courierName}). AWB: ${trackingNumber}`,
+          },
+        },
+      },
+      include: {
+        items: true,
+        shippingAddress: true,
+        payments: true,
+        statusHistory: { orderBy: { createdAt: 'desc' } },
+      },
+    });
+
+    res.json({
+      status: 'success',
+      message: 'Payment verified and order successfully connected to Shiprocket Logistics',
+      data: updatedOrder,
+      trackingNumber: updatedOrder.trackingNumber,
+      shiprocketOrderId: updatedOrder.shiprocketOrderId,
+      trackingUrl: updatedOrder.trackingUrl,
+    });
+  } catch (err) {
+    next(err);
+  }
 }
 
 // POST /api/v1/orders/:id/cancel

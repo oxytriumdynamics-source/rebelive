@@ -7,9 +7,10 @@ const router = Router();
 // All user routes require authentication
 router.use(authenticate);
 
-// Profile
+// Profile & Phone Linking
 router.get('/profile', usersController.getProfile);
 router.patch('/profile', usersController.updateProfile);
+router.post('/link-phone', usersController.linkPhone);
 router.patch('/change-password', usersController.changePassword);
 
 // Addresses

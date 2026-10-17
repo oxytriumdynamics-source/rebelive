@@ -55,6 +55,7 @@ router.post('/categories', adminController.createCategory);
 
 // ─── Order Management & Shiprocket Dispatch ───────────
 router.get('/orders', adminController.getOrders);
+router.post('/orders/sync-shiprocket', adminController.syncAllOrdersToShiprocket);
 router.get('/orders/:id', adminController.getOrder);
 router.patch('/orders/:id/status', adminController.updateOrderStatus);
 router.post('/orders/:id/dispatch-shiprocket', adminController.dispatchOrderToShiprocket);

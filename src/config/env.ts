@@ -34,7 +34,9 @@ const envSchema = z.object({
   MAIL_FROM_NAME: z.string().default('REBELIVE'),
 
   // Shiprocket & Fastrr Checkout
-  SR_API_EMAIL: z.string().optional().default('oxytriumdynamics@gmail.com'),
+  SHIPROCKET_BASE_URL: z.string().optional().default('https://apiv2.shiprocket.in/v1/external'),
+  SR_API_TOKEN: z.string().optional().default(''),
+  SR_API_EMAIL: z.string().optional().default('857abhishekls@gmail.com'),
   SR_API_PASSWORD: z.string().optional().default(''),
   SR_PICKUP_LOCATION: z.string().optional().default('Primary'),
   SR_PICKUP_PINCODE: z.string().optional().default('143001'),

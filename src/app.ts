@@ -22,6 +22,12 @@ import supportRoutes from './modules/support/support.routes';
 import contentRoutes from './modules/content/content.routes';
 import adminRoutes from './modules/admin/admin.routes';
 import shippingRoutes from './modules/shipping/shipping.routes';
+import {
+  handleShiprocketWebhook,
+  handleFastrrWebhook,
+  handleShiprocketOrderWebhook,
+  trackShipment,
+} from './modules/shipping/shipping.controller';
 
 const app = express();
 
@@ -33,14 +39,17 @@ app.use(helmet());
 const allowedOrigins =
   env.NODE_ENV === 'production'
     ? [env.CLIENT_URL].filter(Boolean)
-    : [env.CLIENT_URL, 'http://localhost:3000', 'http://localhost:5173'].filter(Boolean);
+    : [env.CLIENT_URL, 'http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:5173', 'http://127.0.0.1:5173'].filter(Boolean);
 
 app.use(
   cors({
     origin: (origin, callback) => {
       // Allow server-to-server or non-browser tools (curl, postman, server webhooks)
       if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) {
+      if (
+        allowedOrigins.includes(origin) ||
+        (env.NODE_ENV !== 'production' && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin))
+      ) {
         return callback(null, true);
       }
       return callback(new Error(`Origin ${origin} not allowed by CORS`));
@@ -54,7 +63,13 @@ app.use(
       'x-api-key',
       'x-api-hmac-sha256',
       'x-fastrr-signature',
+      'Cache-Control',
+      'Pragma',
+      'x-cache',
+      'If-None-Match',
+      'If-Modified-Since',
     ],
+    exposedHeaders: ['X-Cache', 'Cache-Control'],
   }),
 );
 
@@ -83,6 +98,52 @@ app.get('/', (_req, res) => {
 app.get('/health', (_req, res) => {
   res.status(200).json({ status: 'ok', uptime: process.uptime() });
 });
+
+// ─── Main Server Webhooks (Shifted to Root for Direct Gateway Connectivity) ──
+// 1. Shiprocket Tracking Webhook (Couriers scan events & shipment lifecycle)
+// Note: Shiprocket rejects URLs containing "shiprocket", "kartrocket", "sr", or "kr".
+// Primary Compliant Webhook URL: /webhooks/tracking (or /webhook/tracking)
+app.post('/webhooks/tracking', handleShiprocketWebhook);
+app.post('/webhook/tracking', handleShiprocketWebhook);
+app.post('/webhooks/shiprocket', handleShiprocketWebhook);
+app.post('/webhook/shiprocket', handleShiprocketWebhook);
+app.get('/webhooks/tracking', (_req, res) => {
+  res.status(200).json({
+    status: 'active',
+    service: 'Shiprocket Tracking Webhook Endpoint',
+    method: 'POST',
+    acceptedHeaders: ['x-api-key'],
+    documentation: 'Configure in Shiprocket Dashboard > Settings > API > Webhooks',
+  });
+});
+
+// 2. Fastrr (Shiprocket Checkout) Webhooks (Payment & order capture events)
+// Primary Webhook URL: /webhooks/fastrr
+app.post('/webhooks/fastrr', handleFastrrWebhook);
+app.post('/webhook/fastrr', handleFastrrWebhook);
+app.post('/webhooks/order', handleShiprocketOrderWebhook);
+app.post('/webhook/order', handleShiprocketOrderWebhook);
+app.post('/webhooks/fastrr-order', handleShiprocketOrderWebhook);
+app.get('/webhooks/fastrr', (_req, res) => {
+  res.status(200).json({
+    status: 'active',
+    service: 'Fastrr Checkout Webhook Endpoint',
+    method: 'POST',
+    signatureHeader: 'x-api-hmac-sha256',
+    documentation: 'Configure in Fastrr Dashboard > Settings > Webhooks',
+  });
+});
+app.get('/webhooks/order', (_req, res) => {
+  res.status(200).json({
+    status: 'active',
+    service: 'Shiprocket Checkout Order Ingestion Webhook Endpoint',
+    method: 'POST',
+  });
+});
+
+// 3. Webhook Order Status Sync (Connected to Order Confirmation Page)
+app.get('/webhooks/status/:identifier', trackShipment);
+app.get('/api/v1/shipping/order-status/:identifier', trackShipment);
 
 // ─── API Routes ───────────────────────────────────────
 const API = '/api/v1';

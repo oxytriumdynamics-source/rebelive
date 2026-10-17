@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../../config/database';
 import { NotFoundError } from '../../shared/errors/AppError';
 import { getPagination, buildPaginationResult } from '../../shared/types';
+import { productsCache } from './products.cache';
 
 const paramStr = (req: Request, key = 'id'): string => req.params[key] as string;
 const qStr = (req: Request, key: string): string | undefined => {
@@ -18,6 +19,7 @@ export async function getCategories(req: Request, res: Response, next: NextFunct
       where: { isActive: true },
       orderBy: { sortOrder: 'asc' },
     });
+    res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=600');
     res.json({ status: 'success', data: categories });
   } catch (err) { next(err); }
 }
@@ -31,6 +33,16 @@ export async function getProducts(req: Request, res: Response, next: NextFunctio
     const categoryId = qStr(req, 'categoryId');
     const featured = qStr(req, 'featured');
     const search = qStr(req, 'search');
+
+    const cacheKey = `list:${categoryId || ''}:${featured || ''}:${search || ''}:${page}:${limit}`;
+    const cached = productsCache.getList(cacheKey);
+
+    if (cached) {
+      res.setHeader('X-Cache', 'HIT');
+      res.setHeader('Cache-Control', 'public, max-age=180, stale-while-revalidate=300');
+      res.json(cached);
+      return;
+    }
 
     const where = {
       isActive: true,
@@ -67,11 +79,22 @@ export async function getProducts(req: Request, res: Response, next: NextFunctio
       })),
     }));
 
-    res.json({
+    const responsePayload = {
       status: 'success',
       products: formattedData,
       ...buildPaginationResult(formattedData, total, page, limit),
+    };
+
+    // Store in cache and pre-warm individual items
+    productsCache.setList(cacheKey, responsePayload);
+    formattedData.forEach((p) => {
+      if (p.slug) productsCache.setProduct(p.slug, p);
+      if (p.id) productsCache.setProduct(String(p.id), p);
     });
+
+    res.setHeader('X-Cache', 'MISS');
+    res.setHeader('Cache-Control', 'public, max-age=180, stale-while-revalidate=300');
+    res.json(responsePayload);
   } catch (err) { next(err); }
 }
 
@@ -79,6 +102,15 @@ export async function getProducts(req: Request, res: Response, next: NextFunctio
 export async function getProduct(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const slugOrId = paramStr(req, 'slug');
+    const cached = productsCache.getProduct(slugOrId);
+
+    if (cached) {
+      res.setHeader('X-Cache', 'HIT');
+      res.setHeader('Cache-Control', 'public, max-age=180, stale-while-revalidate=300');
+      res.json({ status: 'success', data: cached, product: cached });
+      return;
+    }
+
     const isNumeric = /^\d+$/.test(slugOrId);
 
     const product = await prisma.product.findFirst({
@@ -114,6 +146,12 @@ export async function getProduct(req: Request, res: Response, next: NextFunction
       })),
     };
 
+    productsCache.setProduct(slugOrId, formattedProduct);
+    if (formattedProduct.slug) productsCache.setProduct(formattedProduct.slug, formattedProduct);
+    if (formattedProduct.id) productsCache.setProduct(String(formattedProduct.id), formattedProduct);
+
+    res.setHeader('X-Cache', 'MISS');
+    res.setHeader('Cache-Control', 'public, max-age=180, stale-while-revalidate=300');
     res.json({ status: 'success', data: formattedProduct, product: formattedProduct });
   } catch (err) { next(err); }
 }
@@ -197,6 +235,8 @@ export async function createReview(req: Request, res: Response, next: NextFuncti
         body: String(body).slice(0, 2000),
       },
     });
+    // Invalidate product cache so updated reviews and ratings reflect immediately
+    productsCache.clear();
     res.status(201).json({ status: 'success', data: review });
   } catch (err) { next(err); }
 }
