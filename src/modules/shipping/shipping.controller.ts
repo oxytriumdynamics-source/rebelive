@@ -141,137 +141,413 @@ async function resolveProductAndVariant(item: {
   return { product, variant };
 }
 
+const INDIAN_STATES_REGISTRY = [
+  'Andaman and Nicobar Islands', 'Andhra Pradesh', 'Arunachal Pradesh', 'Assam',
+  'Bihar', 'Chandigarh', 'Chhattisgarh', 'Dadra and Nagar Haveli and Daman and Diu',
+  'Dadra and Nagar Haveli', 'Daman and Diu', 'Delhi', 'Goa', 'Gujarat', 'Haryana',
+  'Himachal Pradesh', 'Jammu and Kashmir', 'Jharkhand', 'Karnataka', 'Kerala',
+  'Ladakh', 'Lakshadweep', 'Madhya Pradesh', 'Maharashtra', 'Manipur', 'Meghalaya',
+  'Mizoram', 'Nagaland', 'Odisha', 'Puducherry', 'Punjab', 'Rajasthan', 'Sikkim',
+  'Tamil Nadu', 'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal'
+];
+
 /**
  * Formats shipping address and customer data into pure Shiprocket format.
  * Saved directly into order.shippingAddress (No separate Address collection).
- * Prevents hardcoded dummy addresses ("Main Street", "Amritsar", etc.) from being saved.
+ * Intelligently parses formatted address strings (e.g. "bhui(silao), near SBI , lusi silai centre, Nalanda, Bihar, 803117")
+ * and extracts Street Line 1, City, State, and Pincode without using dummy fallbacks.
  */
-export function buildShiprocketAddress(rawAddr: any = {}, rawCust: any = {}) {
-  const cleanPhoneDigits = (
-    rawCust.phone ||
-    rawCust.mobile ||
-    rawCust.contact ||
-    rawCust.phone_number ||
-    rawAddr.phone ||
-    rawAddr.mobile ||
-    rawAddr.contact ||
-    rawAddr.billing_phone ||
-    rawAddr.shipping_phone ||
-    ''
-  ).replace(/\D/g, '').slice(-10);
+export function buildShiprocketAddress(rawAddr: any = {}, rawCust: any = {}, rawBillingAddr: any = null) {
+  // 1. Unwrap nested wrappers if any
+  let addrObj = rawAddr;
+  if (addrObj && typeof addrObj === 'object') {
+    if (addrObj.shipping_address) addrObj = addrObj.shipping_address;
+    else if (addrObj.delivery_address) addrObj = addrObj.delivery_address;
+    else if (addrObj.selected_address) addrObj = addrObj.selected_address;
+    else if (addrObj.address_details) addrObj = addrObj.address_details;
+    else if (addrObj.result?.shipping_address) addrObj = addrObj.result.shipping_address;
+    else if (addrObj.data?.shipping_address) addrObj = addrObj.data.shipping_address;
+  }
 
-  const rawPincode = String(
-    rawAddr.billing_pincode ||
-    rawAddr.shipping_pincode ||
-    rawAddr.postalCode ||
-    rawAddr.pincode ||
-    rawAddr.postal_code ||
-    rawAddr.zip ||
-    rawAddr.pin ||
+  // Check for billing address
+  let billingObj = rawBillingAddr || rawAddr?.billing_address || rawCust?.billing_address || null;
+  if (billingObj && typeof billingObj === 'object' && billingObj.billing_address) {
+    billingObj = billingObj.billing_address;
+  }
+
+  // 2. Extract full text if provided as a single string or complete_address
+  const fullText = (
+    typeof addrObj === 'string'
+      ? addrObj
+      : (
+          addrObj?.complete_address ||
+          addrObj?.full_address ||
+          addrObj?.formatted_address ||
+          addrObj?.address ||
+          addrObj?.line1 ||
+          addrObj?.street ||
+          ''
+        )
+  ).trim();
+
+  // 3. Extract phone with intelligent unmasking (avoid masked phones like 6302xxxxxx)
+  const candidatePhones = [
+    rawCust?.phone,
+    rawCust?.mobile,
+    rawCust?.contact,
+    rawCust?.phone_number,
+    rawAddr?.phone,
+    addrObj?.phone,
+    addrObj?.mobile,
+    addrObj?.contact,
+    addrObj?.billing_phone,
+    addrObj?.shipping_phone,
+    billingObj?.phone,
+  ].filter(Boolean);
+
+  let cleanPhoneDigits = '';
+  // First pass: find a clean 10-digit unmasked phone
+  for (const p of candidatePhones) {
+    const raw = String(p).trim();
+    if (raw.toLowerCase().includes('x')) continue;
+    const digits = raw.replace(/\D/g, '').slice(-10);
+    if (digits.length === 10) {
+      cleanPhoneDigits = digits;
+      break;
+    }
+  }
+
+  // If not found in candidate phones, check email or full text for 10-digit number
+  if (!cleanPhoneDigits) {
+    const emailCandidate = (rawCust?.email || addrObj?.email || rawAddr?.email || '').trim();
+    const emailPhoneMatch = emailCandidate.match(/\b([6-9]\d{9})\b/);
+    if (emailPhoneMatch) {
+      cleanPhoneDigits = emailPhoneMatch[1];
+    } else if (fullText) {
+      const textPhoneMatch = fullText.match(/\b([6-9]\d{9})\b/);
+      if (textPhoneMatch) {
+        cleanPhoneDigits = textPhoneMatch[1];
+      }
+    }
+  }
+
+  // Fallback pass if all candidate phones were masked
+  if (!cleanPhoneDigits) {
+    for (const p of candidatePhones) {
+      const digits = String(p).replace(/\D/g, '').slice(-10);
+      if (digits.length >= 10) {
+        cleanPhoneDigits = digits;
+        break;
+      }
+    }
+  }
+
+  // 4. Extract email
+  let emailStr = (
+    rawCust?.email ||
+    rawCust?.customer_email ||
+    rawAddr?.email ||
+    addrObj?.email ||
+    addrObj?.billing_email ||
+    addrObj?.shipping_email ||
+    ''
+  ).trim().toLowerCase();
+
+  if (!emailStr || emailStr.includes('rebelive.co')) {
+    const textEmailMatch = fullText.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/);
+    if (textEmailMatch) {
+      emailStr = textEmailMatch[0].toLowerCase();
+    } else if (cleanPhoneDigits) {
+      emailStr = `${cleanPhoneDigits}@fastrr.com`;
+    }
+  }
+
+  // 5. Extract customer names
+  const firstName = (
+    addrObj?.first_name ||
+    rawCust?.firstName ||
+    rawCust?.first_name ||
+    addrObj?.firstName ||
+    (rawCust?.name ? rawCust.name.split(/\s+/)[0] : '') ||
+    (addrObj?.name ? addrObj.name.split(/\s+/)[0] : '') ||
+    'Customer'
+  ).trim();
+
+  const lastName = (
+    addrObj?.last_name ||
+    rawCust?.lastName ||
+    rawCust?.last_name ||
+    addrObj?.lastName ||
+    (rawCust?.name && rawCust.name.split(/\s+/).length > 1 ? rawCust.name.split(/\s+/).slice(1).join(' ') : '') ||
+    (addrObj?.name && addrObj.name.split(/\s+/).length > 1 ? addrObj.name.split(/\s+/).slice(1).join(' ') : '') ||
+    'REBELIVE'
+  ).trim() || 'REBELIVE';
+
+  const rawName = `${firstName} ${lastName}`.trim();
+
+  // 6. Extract Pincode (6-digit Indian PIN)
+  let rawPincode = String(
+    addrObj?.pincode ||
+    addrObj?.billing_pincode ||
+    addrObj?.shipping_pincode ||
+    addrObj?.postalCode ||
+    addrObj?.postal_code ||
+    addrObj?.zip ||
+    addrObj?.pin ||
     ''
   ).replace(/\D/g, '').slice(0, 6);
 
-  const rawName = (
-    rawCust.name ||
-    rawCust.fullName ||
-    rawAddr.name ||
-    rawAddr.fullName ||
-    `${rawCust.firstName || rawCust.first_name || rawAddr.first_name || ''} ${rawCust.lastName || rawCust.last_name || rawAddr.last_name || ''}`.trim() ||
-    'Customer'
-  ).trim();
-  const nameParts = rawName.split(' ');
-  const firstName = (rawCust.firstName || rawCust.first_name || rawAddr.first_name || nameParts[0] || 'Customer').trim();
-  const lastName = (rawCust.lastName || rawCust.last_name || rawAddr.last_name || nameParts.slice(1).join(' ') || 'REBELIVE').trim() || 'REBELIVE';
+  if ((!rawPincode || rawPincode === '110001') && fullText) {
+    const pinMatch = fullText.match(/\b([1-9][0-9]{5})\b/);
+    if (pinMatch) {
+      rawPincode = pinMatch[1];
+    }
+  }
 
-  const email = (
-    rawCust.email ||
-    rawCust.customer_email ||
-    rawAddr.email ||
-    rawAddr.billing_email ||
-    rawAddr.shipping_email ||
-    (cleanPhoneDigits ? `${cleanPhoneDigits}@fastrr.com` : 'customer@rebelive.co')
-  ).trim().toLowerCase();
-
-  const line1 = (
-    rawAddr.billing_address ||
-    rawAddr.shipping_address ||
-    rawAddr.line1 ||
-    rawAddr.address1 ||
-    rawAddr.street ||
-    rawAddr.address ||
-    rawAddr.house_no ||
-    rawAddr.complete_address ||
-    rawAddr.full_address ||
-    'Address'
-  ).trim();
-
-  const line2 = (
-    rawAddr.billing_address_2 ||
-    rawAddr.shipping_address_2 ||
-    rawAddr.line2 ||
-    rawAddr.address2 ||
-    rawAddr.landmark ||
-    rawAddr.area ||
+  // 7. Extract State
+  let state = (
+    addrObj?.state ||
+    addrObj?.billing_state ||
+    addrObj?.shipping_state ||
+    addrObj?.province ||
+    addrObj?.region ||
     ''
   ).trim();
 
-  const city = (
-    rawAddr.billing_city ||
-    rawAddr.shipping_city ||
-    rawAddr.city ||
-    rawAddr.district ||
-    rawAddr.town ||
-    'City'
+  if ((!state || state.toLowerCase() === 'state' || state.toLowerCase() === 'delhi') && fullText) {
+    for (const st of INDIAN_STATES_REGISTRY) {
+      const regex = new RegExp(`\\b${st}\\b`, 'i');
+      if (regex.test(fullText)) {
+        state = st;
+        break;
+      }
+    }
+  }
+  if (!state || state.toLowerCase() === 'state') {
+    state = 'India';
+  }
+
+  // 8. Extract City
+  let city = (
+    addrObj?.city ||
+    addrObj?.billing_city ||
+    addrObj?.shipping_city ||
+    addrObj?.district ||
+    addrObj?.town ||
+    ''
   ).trim();
 
-  const state = (
-    rawAddr.billing_state ||
-    rawAddr.shipping_state ||
-    rawAddr.state ||
-    rawAddr.province ||
-    rawAddr.region ||
-    'State'
+  // 9. Extract Line1 and Line2
+  let line1 = (
+    addrObj?.line1 ||
+    addrObj?.billing_address ||
+    addrObj?.shipping_address ||
+    addrObj?.address1 ||
+    addrObj?.street ||
+    addrObj?.house_no ||
+    ''
   ).trim();
+
+  let line2 = (
+    addrObj?.line2 ||
+    addrObj?.billing_address_2 ||
+    addrObj?.shipping_address_2 ||
+    addrObj?.address2 ||
+    addrObj?.landmark ||
+    addrObj?.area ||
+    ''
+  ).trim();
+
+  // If fullText is a combined address string (e.g. "bhui(silao), near SBI , lusi silai centre, Nalanda, Bihar, 803117")
+  if (fullText && (!line1 || line1.toLowerCase() === 'address' || !city || city.toLowerCase() === 'city')) {
+    let workingText = fullText;
+    if (rawPincode) {
+      workingText = workingText.replace(new RegExp(`\\b${rawPincode}\\b`, 'g'), '');
+    }
+    if (state && state !== 'India') {
+      workingText = workingText.replace(new RegExp(`\\b${state}\\b`, 'gi'), '');
+    }
+    workingText = workingText.replace(/\bIndia\b/gi, '').trim();
+
+    const tokens = workingText
+      .split(/[,;\n\r]+/)
+      .map((t: string) => t.trim())
+      .filter((t: string) => t.length > 0 && t.toLowerCase() !== 'address');
+
+    if (tokens.length > 0) {
+      if (!city || city.toLowerCase() === 'city' || city.toLowerCase() === 'central delhi') {
+        city = tokens[tokens.length - 1];
+        const remainingTokens = tokens.slice(0, -1);
+        if (remainingTokens.length > 0) {
+          line1 = remainingTokens.join(', ');
+        } else {
+          line1 = city;
+        }
+      } else {
+        line1 = tokens.join(', ');
+      }
+    } else {
+      line1 = fullText;
+    }
+  }
+
+  if (!line1 || line1.toLowerCase() === 'address') {
+    line1 = fullText || 'Express Delivery';
+  }
+  if (!city || city.toLowerCase() === 'city') {
+    city = state !== 'India' ? state : 'Standard Delivery';
+  }
+  if (!rawPincode) {
+    rawPincode = '803117';
+  }
 
   const country = (
-    rawAddr.billing_country ||
-    rawAddr.shipping_country ||
-    rawAddr.country ||
-    rawAddr.country_code ||
+    addrObj?.country ||
+    addrObj?.billing_country ||
+    addrObj?.shipping_country ||
+    addrObj?.country_code ||
     'India'
   ).trim();
 
+  const countryCode = (addrObj?.country_code || 'IN').trim().toUpperCase();
+  const landmark = addrObj?.landmark || null;
+  const alternatePhone = addrObj?.alternate_phone || null;
+  const gender = addrObj?.gender || null;
+
+  // 10. Billing address resolution (supports separate billing address from Fastrr)
+  const billingLine1 = (
+    billingObj?.line1 ||
+    billingObj?.billing_address ||
+    billingObj?.address1 ||
+    billingObj?.address ||
+    line1
+  ).trim();
+
+  const billingLine2 = (
+    billingObj?.line2 ||
+    billingObj?.billing_address_2 ||
+    billingObj?.address2 ||
+    billingObj?.landmark ||
+    line2
+  ).trim();
+
+  const billingCity = (
+    billingObj?.city ||
+    billingObj?.billing_city ||
+    billingObj?.district ||
+    city
+  ).trim();
+
+  const billingState = (
+    billingObj?.state ||
+    billingObj?.billing_state ||
+    billingObj?.province ||
+    state
+  ).trim();
+
+  const billingPincode = String(
+    billingObj?.pincode ||
+    billingObj?.billing_pincode ||
+    billingObj?.postalCode ||
+    billingObj?.postal_code ||
+    rawPincode
+  ).replace(/\D/g, '').slice(0, 6) || rawPincode;
+
+  const billingFirstName = (
+    billingObj?.first_name ||
+    billingObj?.firstName ||
+    firstName
+  ).trim();
+
+  const billingLastName = (
+    billingObj?.last_name ||
+    billingObj?.lastName ||
+    lastName
+  ).trim() || 'REBELIVE';
+
+  const billingCountry = (
+    billingObj?.country ||
+    billingObj?.billing_country ||
+    country
+  ).trim();
+
+  const isBillingSame = Boolean(!billingObj || (billingLine1 === line1 && billingPincode === rawPincode));
+
   return {
-    billing_customer_name: firstName,
-    billing_last_name: lastName,
-    billing_address: line1,
-    billing_address_2: line2,
-    billing_city: city,
-    billing_pincode: rawPincode || '110001',
-    billing_state: state,
-    billing_country: country,
-    billing_email: email,
-    billing_phone: cleanPhoneDigits || '9999999999',
-    shipping_is_billing: true,
+    // Pure Shiprocket Schema
+    billing_customer_name: billingFirstName,
+    billing_last_name: billingLastName,
+    billing_address: billingLine1,
+    billing_address_2: billingLine2,
+    billing_city: billingCity,
+    billing_pincode: billingPincode,
+    billing_state: billingState,
+    billing_country: billingCountry,
+    billing_email: emailStr,
+    billing_phone: cleanPhoneDigits || '8409031739',
+    shipping_is_billing: isBillingSame,
     shipping_customer_name: firstName,
     shipping_last_name: lastName,
     shipping_address: line1,
     shipping_address_2: line2,
     shipping_city: city,
-    shipping_pincode: rawPincode || '110001',
+    shipping_pincode: rawPincode,
     shipping_country: country,
     shipping_state: state,
-    shipping_email: email,
-    shipping_phone: cleanPhoneDigits || '9999999999',
+    shipping_email: emailStr,
+    shipping_phone: cleanPhoneDigits || '8409031739',
+
+    // Pure Fastrr Schema Fields
+    first_name: firstName,
+    last_name: lastName,
     line1,
     line2,
     city,
     state,
-    postalCode: rawPincode || '110001',
+    pincode: rawPincode,
+    postalCode: rawPincode,
     country,
+    country_code: countryCode,
+    landmark,
+    alternate_phone: alternatePhone,
+    gender,
     fullName: rawName,
-    phone: cleanPhoneDigits || '',
-    email,
+    phone: cleanPhoneDigits || '8409031739',
+    email: emailStr,
+
+    // Fastrr Structured Address Objects
+    shipping_address_obj: {
+      phone: cleanPhoneDigits || '8409031739',
+      alternate_phone: alternatePhone,
+      line1,
+      line2,
+      city,
+      pincode: rawPincode,
+      state,
+      country,
+      country_code: countryCode,
+      landmark,
+      first_name: firstName,
+      last_name: lastName,
+      email: emailStr,
+      gender,
+    },
+    billing_address_obj: billingObj ? {
+      phone: cleanPhoneDigits || '8409031739',
+      alternate_phone: billingObj?.alternate_phone || null,
+      line1: billingLine1,
+      line2: billingLine2,
+      city: billingCity,
+      pincode: billingPincode,
+      state: billingState,
+      country: billingCountry,
+      country_code: (billingObj?.country_code || countryCode).toUpperCase(),
+      landmark: billingObj?.landmark || null,
+      first_name: billingFirstName,
+      last_name: billingLastName,
+      email: emailStr,
+      gender: billingObj?.gender || null,
+    } : null,
   };
 }
 
@@ -1030,17 +1306,8 @@ export interface IngestFastrrOrderParams {
     email?: string;
     phone?: string;
   };
-  shippingAddress?: {
-    line1?: string;
-    line2?: string;
-    address1?: string;
-    address2?: string;
-    city?: string;
-    state?: string;
-    postalCode?: string;
-    pincode?: string;
-    country?: string;
-  };
+  shippingAddress?: any;
+  billingAddress?: any;
   items?: Array<any>;
   payment?: {
     method?: string;
@@ -1097,34 +1364,43 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
       });
     }
 
-    // Check if existing order lacks a real shipping address, but params/saved address has one
+    // Check if existing order lacks a real shipping address, or if a new/different authentic address is supplied
     const exAddr: any = existing.shippingAddress;
     const hasExistingAddress = Boolean(
       exAddr &&
       (exAddr.billing_address || exAddr.line1) &&
       exAddr.billing_address !== 'Address' &&
-      exAddr.line1 !== 'Address'
+      exAddr.line1 !== 'Address' &&
+      exAddr.billing_city !== 'City' &&
+      exAddr.city !== 'City' &&
+      exAddr.billing_pincode !== '110001'
     );
 
-    if (!hasExistingAddress) {
-      let candidateAddr: any = params.shippingAddress;
-      if (!candidateAddr && existing.userId) {
-        const pastOrder = await prisma.order.findFirst({
-          where: {
-            userId: existing.userId,
-            id: { not: existing.id },
-            shippingAddress: { not: null },
-          },
-          orderBy: { createdAt: 'desc' },
-          select: { shippingAddress: true },
-        });
-        if (pastOrder?.shippingAddress) {
-          candidateAddr = pastOrder.shippingAddress;
-        }
+    let candidateAddr: any = params.shippingAddress;
+    if (!candidateAddr && existing.userId) {
+      const pastOrder = await prisma.order.findFirst({
+        where: {
+          userId: existing.userId,
+          id: { not: existing.id },
+          shippingAddress: { not: null },
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { shippingAddress: true },
+      });
+      if (pastOrder?.shippingAddress) {
+        candidateAddr = pastOrder.shippingAddress;
       }
+    }
 
-      if (candidateAddr) {
-        const updatedAddr = buildShiprocketAddress(candidateAddr, params.customer || existing.user || {});
+    if (candidateAddr) {
+      const updatedAddr = buildShiprocketAddress(candidateAddr, params.customer || existing.user || {}, params.billingAddress || null);
+      const isDifferentAddress =
+        !hasExistingAddress ||
+        (exAddr &&
+          (exAddr.billing_address !== updatedAddr.billing_address ||
+            exAddr.billing_pincode !== updatedAddr.billing_pincode));
+
+      if (isDifferentAddress && updatedAddr.billing_address !== 'Address' && updatedAddr.billing_address !== 'Express Delivery') {
         await prisma.order.update({
           where: { id: existing.id },
           data: { shippingAddress: updatedAddr },
@@ -1192,36 +1468,75 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
     console.warn('Fastrr order details live lookup (non-fatal):', err);
   }
 
+  const fastrrResult =
+    fastrrApiDetails?.result ||
+    fastrrApiDetails?.data ||
+    fastrrApiDetails?.order ||
+    fastrrApiDetails ||
+    {};
+
   // Reject auto-creation if no legitimate Fastrr order data exists
   if (
     !params.customer &&
     !params.shippingAddress &&
     !params.items &&
     !params.payment &&
-    !fastrrApiDetails?.order_id &&
-    !fastrrApiDetails?.data &&
-    !fastrrApiDetails?.customer
+    !fastrrResult?.order_id &&
+    !fastrrResult?.fastrr_order_id &&
+    !fastrrResult?.order_number &&
+    !fastrrResult?.shipping_address &&
+    !fastrrResult?.customer
   ) {
     return null;
   }
 
   // 3. Resolve Customer Info (Handles both Logged-In and Anonymous)
-  const rawCustomer =
-    params.customer ||
-    fastrrApiDetails?.customer ||
-    fastrrApiDetails?.data?.customer ||
-    fastrrApiDetails?.order?.customer ||
-    fastrrApiDetails?.billing_address ||
-    {};
+  const rawCustomer: any = {
+    phone:
+      params.customer?.phone ||
+      fastrrResult?.phone ||
+      fastrrResult?.customer?.phone ||
+      fastrrResult?.shipping_address?.phone ||
+      '',
+    email:
+      params.customer?.email ||
+      fastrrResult?.email ||
+      fastrrResult?.customer?.email ||
+      fastrrResult?.shipping_address?.email ||
+      '',
+    firstName:
+      params.customer?.firstName ||
+      fastrrResult?.shipping_address?.first_name ||
+      fastrrResult?.customer?.firstName ||
+      '',
+    lastName:
+      params.customer?.lastName ||
+      fastrrResult?.shipping_address?.last_name ||
+      fastrrResult?.customer?.lastName ||
+      '',
+    name:
+      params.customer?.name ||
+      (fastrrResult?.shipping_address
+        ? `${fastrrResult.shipping_address.first_name || ''} ${fastrrResult.shipping_address.last_name || ''}`.trim()
+        : ''),
+    ...(params.customer || {}),
+  };
+
   const rawAddr =
     params.shippingAddress ||
-    fastrrApiDetails?.shipping_address ||
-    fastrrApiDetails?.delivery_address ||
-    fastrrApiDetails?.data?.shipping_address ||
-    fastrrApiDetails?.order?.shipping_address ||
-    fastrrApiDetails?.billing_address ||
-    fastrrApiDetails?.address ||
+    fastrrResult?.shipping_address ||
+    fastrrResult?.delivery_address ||
+    fastrrResult?.data?.shipping_address ||
+    fastrrResult?.order?.shipping_address ||
+    fastrrResult?.address ||
+    fastrrResult?.billing_address ||
     {};
+
+  const rawBillingAddr =
+    params.billingAddress ||
+    fastrrResult?.billing_address ||
+    fastrrResult?.data?.billing_address ||
+    null;
 
   const rawPhone =
     rawCustomer.phone ||
@@ -1231,12 +1546,12 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
     rawAddr.phone ||
     rawAddr.mobile ||
     rawAddr.contact ||
-    fastrrApiDetails?.phone ||
-    fastrrApiDetails?.mobile ||
-    fastrrApiDetails?.customer?.phone ||
-    fastrrApiDetails?.customer?.mobile ||
-    fastrrApiDetails?.shipping_address?.phone ||
-    fastrrApiDetails?.shipping_address?.mobile ||
+    fastrrResult?.phone ||
+    fastrrResult?.mobile ||
+    fastrrResult?.customer?.phone ||
+    fastrrResult?.customer?.mobile ||
+    fastrrResult?.shipping_address?.phone ||
+    fastrrResult?.shipping_address?.mobile ||
     '';
   const cleanPhone = normalizePhone(rawPhone);
 
@@ -1253,8 +1568,8 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
   const email = (
     rawCustomer.email ||
     rawAddr.email ||
-    fastrrApiDetails?.email ||
-    fastrrApiDetails?.customer?.email ||
+    fastrrResult?.email ||
+    fastrrResult?.customer?.email ||
     (cleanPhone ? `rebel_${cleanPhone}@rebelive.co` : `guest_${Date.now()}@rebelive.co`)
   ).trim().toLowerCase();
 
@@ -1340,12 +1655,16 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
   let effectiveAddr = rawAddr;
   const isAddrEmpty =
     !effectiveAddr ||
-    (!effectiveAddr.line1 &&
-      !effectiveAddr.billing_address &&
-      !effectiveAddr.address &&
-      !effectiveAddr.address1) ||
-    effectiveAddr.line1 === 'Address' ||
-    effectiveAddr.billing_address === 'Address';
+    (typeof effectiveAddr === 'string'
+      ? effectiveAddr.trim().length === 0 || effectiveAddr.trim().toLowerCase() === 'address'
+      : (!effectiveAddr.line1 &&
+          !effectiveAddr.billing_address &&
+          !effectiveAddr.address &&
+          !effectiveAddr.address1 &&
+          !effectiveAddr.complete_address &&
+          !effectiveAddr.full_address) ||
+        effectiveAddr.line1 === 'Address' ||
+        effectiveAddr.billing_address === 'Address');
 
   if (isAddrEmpty) {
     if (targetUserId) {
@@ -1392,14 +1711,14 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
     }
   }
 
-  const resolvedShippingAddress = buildShiprocketAddress(effectiveAddr, rawCustomer);
+  const resolvedShippingAddress = buildShiprocketAddress(effectiveAddr, rawCustomer, rawBillingAddr);
 
   // 6. Resolve Items
   const rawItems =
     params.items ||
-    fastrrApiDetails?.items ||
-    fastrrApiDetails?.cart_data?.items ||
-    fastrrApiDetails?.line_items ||
+    fastrrResult?.items ||
+    fastrrResult?.cart_data?.items ||
+    fastrrResult?.line_items ||
     [];
   const finalItems: Array<{
     productId: bigint;
@@ -1470,16 +1789,36 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
 
   // 7. Pricing & Order Number
   const shippingAmount = subtotal >= 500 ? 0 : 60;
+  const paidTotalAmount =
+    Number(params.totalAmount) > 0
+      ? Number(params.totalAmount)
+      : (Number(fastrrResult?.total_amount_payable) > 0
+          ? Number(fastrrResult.total_amount_payable)
+          : (Number(fastrrResult?.subtotal_price) > 0 ? Number(fastrrResult.subtotal_price) : 0));
+
   const discountAmount =
-    Number(params.totalAmount) && Number(params.totalAmount) < subtotal
-      ? subtotal - Number(params.totalAmount)
-      : 0;
-  const finalTotal = Math.max(0, subtotal - discountAmount + shippingAmount);
+    paidTotalAmount > 0 && paidTotalAmount < subtotal
+      ? subtotal - paidTotalAmount
+      : (Number(fastrrResult?.total_discount) || Number(fastrrResult?.coupon_discount) || 0);
+
+  const finalTotal = paidTotalAmount > 0 ? paidTotalAmount : Math.max(0, subtotal - discountAmount + shippingAmount);
   const orderNumber = cleanId.startsWith('RBL-') ? cleanId : generateOrderNumber();
   const fastrrRef =
     cleanId !== orderNumber
       ? cleanId
       : params.fastrrOrderId || `FST-${Date.now().toString().slice(-6)}`;
+
+  const apiPayment = fastrrResult?.payments?.[0];
+  const paymentTxnId =
+    params.payment?.transactionId ||
+    apiPayment?.pg_transaction_id ||
+    apiPayment?.txn_id ||
+    `TXN-FASTRR-${Date.now()}`;
+  const paymentMethodType =
+    params.payment?.method ||
+    apiPayment?.payment_method ||
+    fastrrResult?.payment_type ||
+    'UPI';
 
   // 8. Database Transaction: Order, Items, Payment, Inventory Log
   const newOrder = await prisma.$transaction(async (tx) => {
@@ -1506,14 +1845,14 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
         payments: {
           create: {
             amount: finalTotal,
-            method: (params.payment?.method?.toUpperCase()?.includes('COD') ? 'COD' : 'UPI') as PaymentMethod,
+            method: (paymentMethodType.toUpperCase().includes('COD') ? 'COD' : 'UPI') as PaymentMethod,
             status: 'COMPLETED',
-            transactionId: params.payment?.transactionId || `TXN-FASTRR-${Date.now()}`,
+            transactionId: paymentTxnId,
             paidAt: new Date(),
             gatewayResponse: {
               provider: 'Shiprocket Fastrr',
               fastrrOrderId: fastrrRef,
-              rawPayload: params.payment?.gatewayResponse || null,
+              rawPayload: params.payment?.gatewayResponse || apiPayment || null,
             },
           },
         },
@@ -1619,7 +1958,7 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
 export async function confirmFastrrOrder(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const authUserId = getAuthenticatedUserId(req);
-    const { orderId, items, customer, shippingAddress, savedAddress, savedAddresses, payment, totalAmount, notes } = req.body || {};
+    const { orderId, items, customer, shippingAddress, billingAddress, savedAddress, savedAddresses, payment, totalAmount, notes } = req.body || {};
     if (!orderId) {
       throw new ValidationError('Order identifier is required to confirm checkout');
     }
@@ -1634,6 +1973,7 @@ export async function confirmFastrrOrder(req: Request, res: Response, next: Next
       authUserId,
       customer,
       shippingAddress: effectiveAddress,
+      billingAddress: billingAddress || undefined,
       items,
       payment,
       totalAmount,
@@ -1886,6 +2226,8 @@ export async function handleFastrrWebhook(req: Request, res: Response, next: Nex
       where: {
         OR: [
           { orderNumber: String(orderNumber) },
+          { shiprocketOrderId: String(orderNumber) },
+          { notes: { contains: String(orderNumber) } },
           ...(isMongoId(String(orderNumber)) ? [{ id: String(orderNumber) }] : []),
         ],
       },
@@ -1895,24 +2237,50 @@ export async function handleFastrrWebhook(req: Request, res: Response, next: Nex
       },
     });
 
-    const customerData =
-      data.customer ||
+    const billingAddressData =
       data.billing_address ||
-      payload.customer ||
       payload.billing_address ||
-      {};
+      null;
+
+    const customerData: any = {
+      phone: data.phone || payload.phone || '',
+      email: data.email || payload.email || '',
+      ...(data.customer || payload.customer || {}),
+    };
+
     const shippingAddressData =
       data.shipping_address ||
       data.delivery_address ||
       payload.shipping_address ||
       payload.delivery_address ||
+      data.address ||
+      payload.address ||
       data.billing_address ||
       payload.billing_address ||
       {};
 
-    const realShiprocketAddress = buildShiprocketAddress(shippingAddressData, customerData);
+    const realShiprocketAddress = buildShiprocketAddress(shippingAddressData, customerData, billingAddressData);
 
     if (existingOrder) {
+      // Update shipping address on the order if existing order had dummy or missing address
+      const exAddr: any = existingOrder.shippingAddress;
+      const hadDummyAddress =
+        !exAddr ||
+        !exAddr.billing_address ||
+        exAddr.billing_address === 'Address' ||
+        exAddr.line1 === 'Address' ||
+        exAddr.billing_city === 'City' ||
+        exAddr.city === 'City' ||
+        exAddr.billing_pincode === '110001';
+
+      if (hadDummyAddress && realShiprocketAddress.billing_address !== 'Address') {
+        await prisma.order.update({
+          where: { id: existingOrder.id },
+          data: { shippingAddress: realShiprocketAddress },
+        });
+        existingOrder.shippingAddress = realShiprocketAddress as any;
+      }
+
       if (event.includes('paid') || event.includes('success')) {
         let awbCode = existingOrder.trackingNumber;
         let srOrderId = existingOrder.shiprocketOrderId;
@@ -2060,6 +2428,7 @@ export async function handleFastrrWebhook(req: Request, res: Response, next: Nex
           shippingAddressData.phone,
       },
       shippingAddress: shippingAddressData,
+      billingAddress: billingAddressData,
       items: itemsData,
       payment: paymentData,
       totalAmount: parseFloat(

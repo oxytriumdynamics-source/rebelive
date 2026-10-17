@@ -4,6 +4,7 @@ import { NotFoundError, ValidationError } from '../../shared/errors/AppError';
 import { generateOrderNumber } from '../../shared/utils/generateOrderNumber';
 import { getPagination, buildPaginationResult } from '../../shared/types';
 import { shiprocketService } from '../shipping/shiprocket.service';
+import { buildShiprocketAddress } from '../shipping/shipping.controller';
 import type { PaymentMethod, OrderStatus, PaymentStatus } from '@prisma/client';
 
 const uid = (req: Request) => req.user!.id;
@@ -110,35 +111,7 @@ export async function placeOrder(req: Request, res: Response, next: NextFunction
     };
 
     const rawAddr = (rawShippingAddr || req.body.address || {}) as any;
-    const resolvedShippingAddress = {
-      billing_customer_name: (rawAddr.billing_customer_name || rawAddr.firstName || rawAddr.name || req.user?.firstName || 'Customer').trim(),
-      billing_last_name: (rawAddr.billing_last_name || rawAddr.lastName || req.user?.lastName || 'REBELIVE').trim(),
-      billing_address: (rawAddr.billing_address || rawAddr.shipping_address || rawAddr.line1 || rawAddr.address1 || rawAddr.address || 'Address').trim(),
-      billing_address_2: (rawAddr.billing_address_2 || rawAddr.shipping_address_2 || rawAddr.line2 || rawAddr.address2 || '').trim(),
-      billing_city: (rawAddr.billing_city || rawAddr.shipping_city || rawAddr.city || rawAddr.district || 'City').trim(),
-      billing_pincode: (rawAddr.billing_pincode || rawAddr.shipping_pincode || rawAddr.postalCode || rawAddr.pincode || '110001').replace(/\D/g, '').slice(0, 6) || '110001',
-      billing_state: (rawAddr.billing_state || rawAddr.shipping_state || rawAddr.state || rawAddr.province || 'State').trim(),
-      billing_country: (rawAddr.billing_country || rawAddr.shipping_country || rawAddr.country || 'India').trim(),
-      billing_email: (rawAddr.billing_email || rawAddr.shipping_email || rawAddr.email || req.user?.email || 'customer@rebelive.co').trim(),
-      billing_phone: (rawAddr.billing_phone || rawAddr.shipping_phone || rawAddr.phone || (req.user as any)?.phone || '').trim(),
-      shipping_is_billing: true,
-      shipping_customer_name: (rawAddr.shipping_customer_name || rawAddr.firstName || rawAddr.name || req.user?.firstName || 'Customer').trim(),
-      shipping_last_name: (rawAddr.shipping_last_name || rawAddr.lastName || req.user?.lastName || 'REBELIVE').trim(),
-      shipping_address: (rawAddr.shipping_address || rawAddr.billing_address || rawAddr.line1 || rawAddr.address1 || rawAddr.address || 'Address').trim(),
-      shipping_address_2: (rawAddr.shipping_address_2 || rawAddr.billing_address_2 || rawAddr.line2 || rawAddr.address2 || '').trim(),
-      shipping_city: (rawAddr.shipping_city || rawAddr.billing_city || rawAddr.city || rawAddr.district || 'City').trim(),
-      shipping_pincode: (rawAddr.shipping_pincode || rawAddr.billing_pincode || rawAddr.postalCode || rawAddr.pincode || '110001').replace(/\D/g, '').slice(0, 6) || '110001',
-      shipping_state: (rawAddr.shipping_state || rawAddr.billing_state || rawAddr.state || rawAddr.province || 'State').trim(),
-      shipping_country: (rawAddr.shipping_country || rawAddr.billing_country || rawAddr.country || 'India').trim(),
-      shipping_email: (rawAddr.shipping_email || rawAddr.billing_email || rawAddr.email || req.user?.email || 'customer@rebelive.co').trim(),
-      shipping_phone: (rawAddr.shipping_phone || rawAddr.billing_phone || rawAddr.phone || (req.user as any)?.phone || '').trim(),
-      line1: (rawAddr.billing_address || rawAddr.shipping_address || rawAddr.line1 || rawAddr.address1 || rawAddr.address || 'Address').trim(),
-      line2: (rawAddr.billing_address_2 || rawAddr.shipping_address_2 || rawAddr.line2 || rawAddr.address2 || '').trim(),
-      city: (rawAddr.billing_city || rawAddr.shipping_city || rawAddr.city || rawAddr.district || 'City').trim(),
-      state: (rawAddr.billing_state || rawAddr.shipping_state || rawAddr.state || rawAddr.province || 'State').trim(),
-      postalCode: (rawAddr.billing_pincode || rawAddr.shipping_pincode || rawAddr.postalCode || rawAddr.pincode || '110001').replace(/\D/g, '').slice(0, 6) || '110001',
-      country: (rawAddr.billing_country || rawAddr.shipping_country || rawAddr.country || 'India').trim(),
-    };
+    const resolvedShippingAddress = buildShiprocketAddress(rawAddr, req.user);
 
     const cart = await prisma.cart.findFirst({
       where: { userId: uid(req) },

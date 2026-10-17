@@ -391,6 +391,23 @@ class ShiprocketService {
       (cleanPhoneDigits ? `fastrr_${cleanPhoneDigits}@fastrr.com` : 'customer@rebelive.co')
     ).trim().toLowerCase();
 
+    const isShippingSame = addr.shipping_is_billing !== undefined
+      ? Boolean(addr.shipping_is_billing)
+      : (billingAddress && addr.shipping_address ? billingAddress === addr.shipping_address : true);
+
+    const shippingCustomerName = (addr.shipping_customer_name || addr.first_name || billingCustomerName).trim();
+    const shippingLastName = (addr.shipping_last_name || addr.last_name || billingLastName).trim();
+    const shippingAddress = (addr.shipping_address || addr.line1 || billingAddress).trim();
+    const shippingAddress2 = (addr.shipping_address_2 || addr.line2 || billingAddress2).trim();
+    const shippingCity = (addr.shipping_city || addr.city || billingCity).trim();
+    const shippingState = (addr.shipping_state || addr.state || billingState).trim();
+    const shippingCountry = (addr.shipping_country || addr.country || billingCountry).trim();
+    const rawShipPin = (addr.shipping_pincode || addr.pincode || addr.postalCode || '').toString().replace(/\D/g, '').slice(0, 6);
+    const shippingPincode = rawShipPin ? parseInt(rawShipPin, 10) : billingPincode;
+    const shippingEmail = (addr.shipping_email || addr.email || billingEmail).trim().toLowerCase();
+    const rawShipPhone = (addr.shipping_phone || addr.phone || '').toString().replace(/\D/g, '').slice(-10);
+    const shippingPhone = rawShipPhone.length === 10 ? parseInt(rawShipPhone, 10) : billingPhone;
+
     const payload: any = {
       order_id: params.orderNumber,
       order_date: formattedDate,
@@ -406,17 +423,17 @@ class ShiprocketService {
       billing_country: billingCountry,
       billing_email: billingEmail,
       billing_phone: billingPhone,
-      shipping_is_billing: true,
-      shipping_customer_name: billingCustomerName,
-      shipping_last_name: billingLastName,
-      shipping_address: billingAddress,
-      shipping_address_2: billingAddress2,
-      shipping_city: billingCity,
-      shipping_pincode: billingPincode,
-      shipping_country: billingCountry,
-      shipping_state: billingState,
-      shipping_email: billingEmail,
-      shipping_phone: billingPhone,
+      shipping_is_billing: isShippingSame,
+      shipping_customer_name: isShippingSame ? billingCustomerName : shippingCustomerName,
+      shipping_last_name: isShippingSame ? billingLastName : shippingLastName,
+      shipping_address: isShippingSame ? billingAddress : shippingAddress,
+      shipping_address_2: isShippingSame ? billingAddress2 : shippingAddress2,
+      shipping_city: isShippingSame ? billingCity : shippingCity,
+      shipping_pincode: isShippingSame ? billingPincode : shippingPincode,
+      shipping_country: isShippingSame ? billingCountry : shippingCountry,
+      shipping_state: isShippingSame ? billingState : shippingState,
+      shipping_email: isShippingSame ? billingEmail : shippingEmail,
+      shipping_phone: isShippingSame ? billingPhone : shippingPhone,
       order_items: params.items.map((item) => ({
         name: item.name,
         sku: item.sku,

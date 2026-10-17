@@ -7,6 +7,7 @@ import { getPagination, buildPaginationResult } from '../../shared/types';
 import { hashPassword, verifyPassword } from '../../shared/utils/password';
 import { generateAccessToken, generateRefreshToken } from '../auth/auth.service';
 import { shiprocketService } from '../shipping/shiprocket.service';
+import { buildShiprocketAddress } from '../shipping/shipping.controller';
 import { sendMail } from '../../lib/mailer';
 import { otpEmailHtml } from '../../lib/emailTemplates';
 import { uploadToCloudinary } from '../../lib/cloudinary';
@@ -1021,37 +1022,25 @@ export async function dispatchOrderToShiprocket(req: Request, res: Response, nex
       throw new NotFoundError('Order not found');
     }
 
-    const address: any = order.shippingAddress || {};
     const paymentMethod = order.payments?.[0]?.method === 'COD' ? 'COD' : 'Prepaid';
-
-    const custFirstName = (address.billing_customer_name || address.shipping_customer_name || address.firstName || order.user?.firstName || 'Customer').trim();
-    const custLastName = (address.billing_last_name || address.shipping_last_name || address.lastName || order.user?.lastName || 'REBELIVE').trim();
-    const custEmail = (address.billing_email || address.shipping_email || address.email || order.user?.email || 'customer@rebelive.co').trim();
-    const custPhone = (address.billing_phone || address.shipping_phone || address.phone || order.user?.phone || '').trim();
-
-    const line1 = (address.billing_address || address.shipping_address || address.line1 || address.address1 || address.street || address.address || 'Address').trim();
-    const line2 = (address.billing_address_2 || address.shipping_address_2 || address.line2 || address.address2 || '').trim();
-    const city = (address.billing_city || address.shipping_city || address.city || address.district || 'City').trim();
-    const state = (address.billing_state || address.shipping_state || address.state || address.province || 'State').trim();
-    const postalCode = (address.billing_pincode || address.shipping_pincode || address.postalCode || address.pincode || address.zip || '110001').replace(/\D/g, '').slice(0, 6) || '110001';
-    const country = (address.billing_country || address.shipping_country || address.country || 'India').trim();
+    const parsedAddr = buildShiprocketAddress(order.shippingAddress || {}, order.user || {});
 
     const shiprocketResult = await shiprocketService.createAdhocOrder({
       orderNumber: order.orderNumber,
       createdAt: order.createdAt,
       customer: {
-        firstName: custFirstName,
-        lastName: custLastName,
-        email: custEmail,
-        phone: custPhone,
+        firstName: parsedAddr.billing_customer_name,
+        lastName: parsedAddr.billing_last_name,
+        email: parsedAddr.billing_email,
+        phone: parsedAddr.billing_phone,
       },
       address: {
-        line1,
-        line2,
-        city,
-        state,
-        postalCode,
-        country,
+        line1: parsedAddr.billing_address,
+        line2: parsedAddr.billing_address_2,
+        city: parsedAddr.billing_city,
+        state: parsedAddr.billing_state,
+        postalCode: parsedAddr.billing_pincode,
+        country: parsedAddr.billing_country,
       },
       items: order.items && order.items.length > 0
         ? order.items.map((i) => ({
@@ -1137,37 +1126,25 @@ export async function syncAllOrdersToShiprocket(req: Request, res: Response, nex
 
     for (const order of orders) {
       try {
-        const address: any = order.shippingAddress || {};
         const paymentMethod = order.payments?.[0]?.method === 'COD' ? 'COD' : 'Prepaid';
-
-        const custFirstName = (address.billing_customer_name || address.shipping_customer_name || address.firstName || order.user?.firstName || 'Customer').trim();
-        const custLastName = (address.billing_last_name || address.shipping_last_name || address.lastName || order.user?.lastName || 'REBELIVE').trim();
-        const custEmail = (address.billing_email || address.shipping_email || address.email || order.user?.email || 'customer@rebelive.co').trim();
-        const custPhone = (address.billing_phone || address.shipping_phone || address.phone || order.user?.phone || '').trim();
-
-        const line1 = (address.billing_address || address.shipping_address || address.line1 || address.address1 || address.street || address.address || 'Address').trim();
-        const line2 = (address.billing_address_2 || address.shipping_address_2 || address.line2 || address.address2 || '').trim();
-        const city = (address.billing_city || address.shipping_city || address.city || address.district || 'City').trim();
-        const state = (address.billing_state || address.shipping_state || address.state || address.province || 'State').trim();
-        const postalCode = (address.billing_pincode || address.shipping_pincode || address.postalCode || address.pincode || address.zip || '110001').replace(/\D/g, '').slice(0, 6) || '110001';
-        const country = (address.billing_country || address.shipping_country || address.country || 'India').trim();
+        const parsedAddr = buildShiprocketAddress(order.shippingAddress || {}, order.user || {});
 
         const shiprocketResult = await shiprocketService.createAdhocOrder({
           orderNumber: order.orderNumber,
           createdAt: order.createdAt,
           customer: {
-            firstName: custFirstName,
-            lastName: custLastName,
-            email: custEmail,
-            phone: custPhone,
+            firstName: parsedAddr.billing_customer_name,
+            lastName: parsedAddr.billing_last_name,
+            email: parsedAddr.billing_email,
+            phone: parsedAddr.billing_phone,
           },
           address: {
-            line1,
-            line2,
-            city,
-            state,
-            postalCode,
-            country,
+            line1: parsedAddr.billing_address,
+            line2: parsedAddr.billing_address_2,
+            city: parsedAddr.billing_city,
+            state: parsedAddr.billing_state,
+            postalCode: parsedAddr.billing_pincode,
+            country: parsedAddr.billing_country,
           },
           items: order.items && order.items.length > 0
             ? order.items.map((i) => ({
