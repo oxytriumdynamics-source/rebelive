@@ -38,7 +38,7 @@ const envSchema = z.object({
   SR_API_TOKEN: z.string().optional().default(''),
   SR_API_EMAIL: z.string().optional().default('857abhishekls@gmail.com'),
   SR_API_PASSWORD: z.string().optional().default(''),
-  SR_PICKUP_LOCATION: z.string().optional().default('Primary'),
+  SR_PICKUP_LOCATION: z.string().optional().default('Home'),
   SR_PICKUP_PINCODE: z.string().optional().default('143001'),
   SR_WEBHOOK_TOKEN: z.string().optional().default('change-me'),
   SR_CHECKOUT_API_KEY: z.string().optional().default(''),

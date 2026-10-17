@@ -8,6 +8,8 @@ const router = Router();
 router.post('/fastrr/initiate', optionalAuthenticate, shippingController.initiateFastrrCheckout);
 router.post('/fastrr/token', shippingController.generateFastrrToken);
 router.post('/fastrr/complete', optionalAuthenticate, shippingController.completeFastrrCheckout);
+router.post('/fastrr/confirm', optionalAuthenticate, shippingController.confirmFastrrOrder);
+router.post('/fastrr/confirm-order', optionalAuthenticate, shippingController.confirmFastrrOrder);
 router.post('/fastrr/order/details', shippingController.getFastrrOrderDetails);
 router.post('/fastrr/order/list', shippingController.listFastrrOrders);
 router.post('/fastrr/refund/initiate', shippingController.initiateRefund);

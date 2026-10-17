@@ -244,7 +244,7 @@ class ShiprocketService {
    * to automatically use the merchant's configured pickup location nickname.
    */
   async getEffectivePickupLocation(token: string): Promise<string> {
-    const configuredNickname = env.SR_PICKUP_LOCATION || 'Primary';
+    const configuredNickname = env.SR_PICKUP_LOCATION || 'Home';
     try {
       const res = await fetch(`${this.baseUrl}/settings/company/pickup`, {
         method: 'GET',
@@ -263,6 +263,12 @@ class ShiprocketService {
           );
           if (matched?.pickup_location) {
             return matched.pickup_location;
+          }
+          const primaryLoc = locations.find(
+            (loc: any) => loc.is_primary_location === 1 || loc.is_primary_location === '1'
+          );
+          if (primaryLoc?.pickup_location) {
+            return primaryLoc.pickup_location;
           }
           return locations[0].pickup_location || configuredNickname;
         }
@@ -288,57 +294,71 @@ class ShiprocketService {
     const formattedDate = params.createdAt.toISOString().replace('T', ' ').slice(0, 16);
     const weight = params.weightKg || Math.max(0.5, params.items.reduce((acc, i) => acc + i.units * 0.35, 0));
 
-    let pickupLocation = env.SR_PICKUP_LOCATION || 'Primary';
+    let pickupLocation = env.SR_PICKUP_LOCATION || 'Home';
     if (token) {
       pickupLocation = await this.getEffectivePickupLocation(token);
     }
 
-    const payload = {
+    const cleanPhoneDigits = (params.customer.phone || '').replace(/\D/g, '').slice(-10) || '9876543210';
+    const billingPhone = parseInt(cleanPhoneDigits, 10) || 9876543210;
+
+    const cleanPincodeDigits = (params.address.postalCode || '').replace(/\D/g, '').slice(0, 6) || '110001';
+    const billingPincode = parseInt(cleanPincodeDigits, 10) || 110001;
+
+    const billingCustomerName = (params.customer.firstName || 'Customer').trim();
+    const billingLastName = (params.customer.lastName || 'REBELIVE').trim() || 'REBELIVE';
+    const billingAddress = (params.address.line1 || 'Main Street').trim();
+    const billingAddress2 = (params.address.line2 || '').trim();
+    const billingCity = (params.address.city || 'Amritsar').trim();
+    const billingState = (params.address.state || 'Punjab').trim();
+    const billingCountry = (params.address.country || 'India').trim();
+    const billingEmail = (params.customer.email || 'customer@rebelive.co').trim();
+
+    const payload: any = {
       order_id: params.orderNumber,
       order_date: formattedDate,
       pickup_location: pickupLocation,
-      channel_id: '',
       comment: 'Rebelive Cold Dispatch - Handle with Care',
-      billing_customer_name: params.customer.firstName || 'Customer',
-      billing_last_name: params.customer.lastName || 'Rebelive',
-      billing_address: params.address.line1,
-      billing_address_2: params.address.line2 || '',
-      billing_city: params.address.city,
-      billing_pincode: params.address.postalCode,
-      billing_state: params.address.state,
-      billing_country: params.address.country || 'India',
-      billing_email: params.customer.email || 'customer@rebelive.co',
-      billing_phone: params.customer.phone || '9999999999',
+      billing_customer_name: billingCustomerName,
+      billing_last_name: billingLastName,
+      billing_address: billingAddress,
+      billing_address_2: billingAddress2,
+      billing_city: billingCity,
+      billing_pincode: billingPincode,
+      billing_state: billingState,
+      billing_country: billingCountry,
+      billing_email: billingEmail,
+      billing_phone: billingPhone,
       shipping_is_billing: true,
-      shipping_customer_name: params.customer.firstName || 'Customer',
-      shipping_last_name: params.customer.lastName || 'Rebelive',
-      shipping_address: params.address.line1,
-      shipping_address_2: params.address.line2 || '',
-      shipping_city: params.address.city,
-      shipping_pincode: params.address.postalCode,
-      shipping_state: params.address.state,
-      shipping_country: params.address.country || 'India',
-      shipping_email: params.customer.email || 'customer@rebelive.co',
-      shipping_phone: params.customer.phone || '9999999999',
+      shipping_customer_name: '',
+      shipping_last_name: '',
+      shipping_address: '',
+      shipping_address_2: '',
+      shipping_city: '',
+      shipping_pincode: '',
+      shipping_country: '',
+      shipping_state: '',
+      shipping_email: '',
+      shipping_phone: '',
       order_items: params.items.map((item) => ({
         name: item.name,
         sku: item.sku,
         units: item.units,
         selling_price: item.selling_price,
-        discount: item.discount || 0,
-        tax: item.tax || 0,
+        discount: '',
+        tax: '',
         hsn: item.hsn || 22029990,
       })),
-      payment_method: params.paymentMethod,
-      shipping_charges: params.shippingAmount,
+      payment_method: params.paymentMethod === 'COD' ? 'COD' : 'Prepaid',
+      shipping_charges: params.shippingAmount || 0,
       giftwrap_charges: 0,
       transaction_charges: 0,
-      total_discount: params.discountAmount,
+      total_discount: params.discountAmount || 0,
       sub_total: params.subtotal,
-      length: 18,
+      length: 10,
       breadth: 15,
-      height: 12,
-      weight: parseFloat(weight.toFixed(2)),
+      height: 20,
+      weight: parseFloat(weight.toFixed(2)) || 0.5,
     };
 
     if (token) {
@@ -369,8 +389,30 @@ class ShiprocketService {
           }
         }
 
-        if (orderRes.ok) {
-          const orderData = (await orderRes.json()) as any;
+        let orderData = (await orderRes.json()) as any;
+
+        // Auto-correct pickup location if Shiprocket returns available locations in message
+        if (
+          (!orderData.order_id && !orderData.shipment_id) &&
+          orderData.data?.data?.[0]?.pickup_location
+        ) {
+          const autoPickup = orderData.data.data[0].pickup_location;
+          console.log(`🔄 Auto-correcting Shiprocket pickup location to "${autoPickup}" and retrying order creation...`);
+          payload.pickup_location = autoPickup;
+          orderRes = await fetch(`${this.baseUrl}/orders/create/adhoc`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify(payload),
+          });
+          if (orderRes.ok) {
+            orderData = (await orderRes.json()) as any;
+          }
+        }
+
+        if (orderRes.ok && (orderData.order_id || orderData.shipment_id)) {
           const srOrderId = orderData.order_id?.toString() || null;
           const srShipmentId = orderData.shipment_id?.toString() || null;
           let awbCode = orderData.awb_code || null;
@@ -410,17 +452,7 @@ class ShiprocketService {
             raw: orderData,
           };
         } else {
-          const errBody = await orderRes.text();
-          if (errBody.includes('Please add billing/shipping address first')) {
-            console.warn(
-              `⚠️ [Shiprocket Action Required] Order creation returned 400: "Please add billing/shipping address first".\n` +
-              `   👉 To dispatch live orders, add at least one Pickup Address in app.shiprocket.in under:\n` +
-              `      Settings (⚙️) -> Pickup Addresses -> "+ Add Pickup Address" with nickname "${pickupLocation}".\n` +
-              `   Once saved, orders can be synced to Shiprocket immediately from the Admin panel.`
-            );
-          } else {
-            console.warn(`⚠️ Shiprocket order creation responded ${orderRes.status}:`, errBody);
-          }
+          console.warn(`⚠️ Shiprocket order creation responded ${orderRes.status}:`, JSON.stringify(orderData));
         }
       } catch (err) {
         console.warn('⚠️ Network error calling Shiprocket order creation:', err);
