@@ -1322,6 +1322,12 @@ export interface IngestFastrrOrderParams {
 }
 
 /**
+ * In-flight promise cache to deduplicate concurrent ingestions/confirmations
+ * for the exact same Fastrr/Shiprocket order identifier across HTTP requests and webhooks.
+ */
+const inFlightFastrrIngestions = new Map<string, Promise<any>>();
+
+/**
  * Universal Ingestion and Confirmation Service for Fastrr 1-Click Orders.
  * Persists orders in database whether placed by an authenticated user or an anonymous/guest customer.
  * Dispatches to Shiprocket and automatically links past guest orders if phone number matches.
@@ -1330,6 +1336,20 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
   const cleanId = (params.orderId || params.fastrrOrderId || '').trim();
   if (!cleanId) return null;
 
+  const dedupKeys = Array.from(
+    new Set([cleanId, (params.fastrrOrderId || '').trim(), (params.orderId || '').trim()].filter(Boolean))
+  );
+
+  // If there is already an ingestion in progress for this order, wait for that exact promise to resolve
+  for (const key of dedupKeys) {
+    const inFlight = inFlightFastrrIngestions.get(key);
+    if (inFlight) {
+      console.log(`🔒 [Fastrr Dedup] Reusing in-flight ingestion promise for key: ${key}`);
+      return await inFlight;
+    }
+  }
+
+  const executionPromise = (async () => {
   // 1. Check if order is already recorded in MongoDB
   let existing = await prisma.order.findFirst({
     where: {
@@ -1822,6 +1842,36 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
 
   // 8. Database Transaction: Order, Items, Payment, Inventory Log
   const newOrder = await prisma.$transaction(async (tx) => {
+    // ATOMIC DOUBLE-CHECK: verify if another concurrent request committed this order already
+    const doubleCheck = await tx.order.findFirst({
+      where: {
+        OR: [
+          { orderNumber: cleanId },
+          { shiprocketOrderId: cleanId },
+          { notes: { contains: cleanId } },
+          ...(isMongoId(cleanId) ? [{ id: cleanId }] : []),
+          ...(fastrrRef && fastrrRef !== cleanId
+            ? [
+                { orderNumber: fastrrRef },
+                { shiprocketOrderId: fastrrRef },
+                { notes: { contains: fastrrRef } },
+              ]
+            : []),
+        ],
+      },
+      include: {
+        items: true,
+        payments: true,
+        user: true,
+        statusHistory: { orderBy: { createdAt: 'desc' } },
+      },
+    });
+
+    if (doubleCheck) {
+      console.log(`🛡️ [Fastrr Dedup] Transaction double-check caught committed order: ${doubleCheck.orderNumber}`);
+      return doubleCheck;
+    }
+
     const created = await tx.order.create({
       data: {
         orderNumber,
@@ -1901,54 +1951,74 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
   }
 
   // 10. Connect with Shiprocket adhoc order dispatch in background
-  try {
-    const srRes = await shiprocketService.createAdhocOrder({
-      orderNumber: newOrder.orderNumber,
-      createdAt: newOrder.createdAt,
-      customer: {
-        firstName: resolvedShippingAddress.billing_customer_name,
-        lastName: resolvedShippingAddress.billing_last_name,
-        email: resolvedShippingAddress.billing_email,
-        phone: resolvedShippingAddress.billing_phone,
-      },
-      address: {
-        line1: resolvedShippingAddress.billing_address,
-        line2: resolvedShippingAddress.billing_address_2,
-        city: resolvedShippingAddress.billing_city,
-        state: resolvedShippingAddress.billing_state,
-        postalCode: resolvedShippingAddress.billing_pincode,
-        country: resolvedShippingAddress.billing_country,
-      },
-      items: finalItems.map((i) => ({
-        name: `${i.productName} - ${i.variantName}`,
-        sku: i.sku,
-        units: i.quantity,
-        selling_price: i.unitPrice,
-      })),
-      paymentMethod: 'Prepaid',
-      subtotal,
-      discountAmount,
-      shippingAmount,
-      total: finalTotal,
-    });
+  const hasLiveShipment = Boolean(
+    newOrder.shiprocketShipmentId ||
+    (newOrder.trackingNumber && !newOrder.trackingNumber.startsWith('SR-'))
+  );
 
-    if (srRes?.awbCode || srRes?.shiprocketOrderId) {
-      await prisma.order.update({
-        where: { id: newOrder.id },
-        data: {
-          trackingNumber: srRes.awbCode || newOrder.trackingNumber,
-          shiprocketOrderId: srRes.shiprocketOrderId || newOrder.shiprocketOrderId,
-          shiprocketShipmentId: srRes.shiprocketShipmentId || newOrder.shiprocketShipmentId,
+  if (!hasLiveShipment) {
+    try {
+      const srRes = await shiprocketService.createAdhocOrder({
+        orderNumber: newOrder.orderNumber,
+        createdAt: newOrder.createdAt,
+        customer: {
+          firstName: resolvedShippingAddress.billing_customer_name,
+          lastName: resolvedShippingAddress.billing_last_name,
+          email: resolvedShippingAddress.billing_email,
+          phone: resolvedShippingAddress.billing_phone,
         },
+        address: {
+          line1: resolvedShippingAddress.billing_address,
+          line2: resolvedShippingAddress.billing_address_2,
+          city: resolvedShippingAddress.billing_city,
+          state: resolvedShippingAddress.billing_state,
+          postalCode: resolvedShippingAddress.billing_pincode,
+          country: resolvedShippingAddress.billing_country,
+        },
+        items: finalItems.map((i) => ({
+          name: `${i.productName} - ${i.variantName}`,
+          sku: i.sku,
+          units: i.quantity,
+          selling_price: i.unitPrice,
+        })),
+        paymentMethod: 'Prepaid',
+        subtotal,
+        discountAmount,
+        shippingAmount,
+        total: finalTotal,
       });
-      if (srRes.awbCode) newOrder.trackingNumber = srRes.awbCode;
-      if (srRes.shiprocketOrderId) newOrder.shiprocketOrderId = srRes.shiprocketOrderId;
+
+      if (srRes?.awbCode || srRes?.shiprocketOrderId) {
+        await prisma.order.update({
+          where: { id: newOrder.id },
+          data: {
+            trackingNumber: srRes.awbCode || newOrder.trackingNumber,
+            shiprocketOrderId: srRes.shiprocketOrderId || newOrder.shiprocketOrderId,
+            shiprocketShipmentId: srRes.shiprocketShipmentId || newOrder.shiprocketShipmentId,
+          },
+        });
+        if (srRes.awbCode) newOrder.trackingNumber = srRes.awbCode;
+        if (srRes.shiprocketOrderId) newOrder.shiprocketOrderId = srRes.shiprocketOrderId;
+      }
+    } catch (srErr) {
+      console.warn('Non-fatal error creating Shiprocket adhoc order:', srErr);
     }
-  } catch (srErr) {
-    console.warn('Non-fatal error creating Shiprocket adhoc order:', srErr);
   }
 
-  return newOrder;
+    return newOrder;
+  })();
+
+  for (const key of dedupKeys) {
+    inFlightFastrrIngestions.set(key, executionPromise);
+  }
+
+  try {
+    return await executionPromise;
+  } finally {
+    for (const key of dedupKeys) {
+      inFlightFastrrIngestions.delete(key);
+    }
+  }
 }
 
 /**
