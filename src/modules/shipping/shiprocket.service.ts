@@ -287,6 +287,7 @@ class ShiprocketService {
     shiprocketShipmentId: string | null;
     awbCode: string | null;
     courierName: string | null;
+    error?: string;
     raw?: any;
   }> {
     let token = await this.getAuthToken();
@@ -453,25 +454,40 @@ class ShiprocketService {
           };
         } else {
           console.warn(`⚠️ Shiprocket order creation responded ${orderRes.status}:`, JSON.stringify(orderData));
+          const errMsg = orderData?.message || (orderData ? JSON.stringify(orderData) : `Shiprocket responded ${orderRes.status}`);
+          return {
+            success: false,
+            isLive: false,
+            shiprocketOrderId: null,
+            shiprocketShipmentId: null,
+            awbCode: null,
+            courierName: null,
+            error: errMsg,
+            raw: orderData,
+          };
         }
-      } catch (err) {
+      } catch (err: any) {
         console.warn('⚠️ Network error calling Shiprocket order creation:', err);
+        return {
+          success: false,
+          isLive: false,
+          shiprocketOrderId: null,
+          shiprocketShipmentId: null,
+          awbCode: null,
+          courierName: null,
+          error: err?.message || 'Network error calling Shiprocket order creation',
+        };
       }
     }
 
-    // High-resilience sandbox generation when Shiprocket credentials are being verified or pickup location is pending
-    console.warn(`⚠️ [Shiprocket Notice] Live dispatch pending pickup location configuration. Queued with consignment references.`);
-    const fallbackShipmentId = `SR-SHP-${Date.now().toString().slice(-7)}`;
-    const fallbackAwb = `SR-${params.orderNumber.replace(/[^0-9]/g, '').slice(-8) || Date.now().toString().slice(-8)}`;
-
     return {
-      success: true,
+      success: false,
       isLive: false,
-      shiprocketOrderId: `SR-${Date.now().toString().slice(-6)}`,
-      shiprocketShipmentId: fallbackShipmentId,
-      awbCode: fallbackAwb,
-      courierName: 'Shiprocket Fastrr Express (Cold Dispatch)',
-      raw: { simulated: true, payload },
+      shiprocketOrderId: null,
+      shiprocketShipmentId: null,
+      awbCode: null,
+      courierName: null,
+      error: 'Shiprocket authentication failed or live credentials unavailable',
     };
   }
 
@@ -487,6 +503,7 @@ class ShiprocketService {
       address?: { city: string; state: string } | null;
       trackingNumber?: string | null;
       courierName?: string | null;
+      statusHistory?: Array<{ status: string; note?: string | null; createdAt: Date }>;
     }
   ): Promise<TrackingResult> {
     let token = await this.getAuthToken();
@@ -550,7 +567,7 @@ class ShiprocketService {
               statusText,
               estimatedDelivery: isDelivered ? 'Delivered to Recipient' : (track.edd || 'Within 24–48 Hours'),
               origin: track.origin || 'Amritsar Cold Hub',
-              destination: track.destination || dbOrderContext?.address?.city || 'Delivery Destination',
+              destination: track.destination || (dbOrderContext?.address?.city ? `${dbOrderContext.address.city}, ${dbOrderContext.address.state || 'India'}` : 'Delivery Destination'),
               activities,
               shiprocketOrderId: track.order_id,
               shiprocketShipmentId: track.shipment_id,
@@ -562,133 +579,92 @@ class ShiprocketService {
       }
     }
 
-    // Return realistic time-based tracking based on database record (supports DELIVERED status)
-    return this.generateSimulatedTracking(identifier, dbOrderContext);
-  }
+    // Honest database-backed tracking: When parcel has not yet been scanned by courier,
+    // reflect only genuine database lifecycle events with zero simulated or fabricated activities.
+    if (dbOrderContext) {
+      const orderNum = dbOrderContext.orderNumber;
+      const trackingNum = dbOrderContext.trackingNumber || identifier;
+      const rawStatus = (dbOrderContext.status || '').toUpperCase();
 
-  /**
-   * Generates realistic, interactive Shiprocket tracking events for the brand experience.
-   * Full support for DELIVERED, OUT_FOR_DELIVERY, IN_TRANSIT, and CONFIRMED.
-   */
-  private generateSimulatedTracking(
-    identifier: string,
-    dbOrderContext?: {
-      orderNumber: string;
-      createdAt: Date;
-      status: string;
-      address?: { city: string; state: string } | null;
-      trackingNumber?: string | null;
-      courierName?: string | null;
-    }
-  ): TrackingResult {
-    const orderNum = dbOrderContext?.orderNumber || identifier;
-    const trackingNum =
-      dbOrderContext?.trackingNumber ||
-      (identifier.startsWith('SR-') ? identifier : `SR-${orderNum.replace(/[^0-9]/g, '').slice(-8) || '892147'}`);
+      const isDelivered = rawStatus === 'DELIVERED';
+      const isShipped = rawStatus === 'SHIPPED';
+      const isProcessing = rawStatus === 'PROCESSING';
+      const isCancelled = rawStatus === 'CANCELLED';
 
-    const baseDate = dbOrderContext?.createdAt ? new Date(dbOrderContext.createdAt) : new Date();
-    const city = dbOrderContext?.address?.city || 'New Delhi';
-    const state = dbOrderContext?.address?.state || 'NCR';
+      const statusText = isDelivered
+        ? 'Delivered · Handed to Recipient'
+        : isShipped
+        ? 'Dispatched · Handed over to Courier'
+        : isProcessing
+        ? 'Processing · Packing in Fulfillment Center'
+        : isCancelled
+        ? 'Order Cancelled'
+        : 'Confirmed · Awaiting Dispatch';
 
-    const rawStatus = (dbOrderContext?.status || '').toUpperCase();
-    const isDelivered = rawStatus === 'DELIVERED' || identifier.toLowerCase().includes('deliv');
-    const isOutForDelivery = rawStatus === 'SHIPPED';
+      const currentStatus = rawStatus || 'CONFIRMED';
+      const destination = dbOrderContext.address?.city
+        ? `${dbOrderContext.address.city}, ${dbOrderContext.address.state || 'India'}`
+        : 'Destination Address';
 
-    const fmt = (d: Date) =>
-      d.toLocaleString('en-IN', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: true,
-      });
-
-    const d1 = new Date(baseDate.getTime());
-    const d2 = new Date(baseDate.getTime() + 15 * 60 * 1000);
-    const d3 = new Date(baseDate.getTime() + 45 * 60 * 1000);
-    const d4 = new Date(baseDate.getTime() + 3 * 3600 * 1000);
-    const d5 = new Date(baseDate.getTime() + 18 * 3600 * 1000);
-    const d6 = new Date(baseDate.getTime() + 24 * 3600 * 1000);
-
-    const activities: TrackingScan[] = [];
-
-    if (isDelivered) {
-      activities.push({
-        date: fmt(d6),
-        status: 'Delivered',
-        activity: 'Package delivered to recipient. Thermal insulation verified intact. Cold-chain seal intact.',
-        location: `${city}, ${state}`,
-      });
-      activities.push({
-        date: fmt(d5),
-        status: 'Out for Delivery',
-        activity: 'Out for delivery with Shiprocket Express courier partner. Cold box loaded for local drop.',
-        location: `${city} Central Distribution Terminal`,
-      });
-    } else if (isOutForDelivery) {
-      activities.push({
-        date: fmt(d5),
-        status: 'Out for Delivery',
-        activity: 'Out for delivery with Shiprocket Express courier partner. Cold box loaded for local drop.',
-        location: `${city} Central Distribution Terminal`,
-      });
-    }
-
-    activities.push(
-      {
-        date: fmt(d4),
-        status: 'In Transit',
-        activity: 'Express linehaul dispatch initiated toward destination distribution terminal',
-        location: 'Amritsar Hub (Punjab)',
-      },
-      {
-        date: fmt(d3),
-        status: 'Manifested',
-        activity: 'Shipment handed over to Shiprocket Express Partner. Thermal seal verified',
-        location: 'Rebelive Cold-Fulfilment Center (Amritsar)',
-      },
-      {
-        date: fmt(d2),
-        status: 'Packed',
-        activity: 'Crated in shock-cushioned matte-black cold box with insulation',
-        location: 'Packaging Facility, Dock 3',
-      },
-      {
-        date: fmt(d1),
-        status: 'Confirmed',
-        activity: 'Order placed via Fastrr Instant Checkout. Payment captured & verified',
-        location: 'Rebelive Digital Ops',
+      const activities: TrackingScan[] = [];
+      if (dbOrderContext.statusHistory && dbOrderContext.statusHistory.length > 0) {
+        for (const h of dbOrderContext.statusHistory) {
+          activities.push({
+            date: new Date(h.createdAt).toLocaleString('en-IN', {
+              day: '2-digit',
+              month: 'short',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+              hour12: true,
+            }),
+            status: h.status,
+            activity: h.note || `Order status updated to ${h.status}`,
+            location: 'Rebelive Fulfillment Center',
+          });
+        }
+      } else {
+        activities.push({
+          date: new Date(dbOrderContext.createdAt).toLocaleString('en-IN', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true,
+          }),
+          status: 'Confirmed',
+          activity: 'Order placed & confirmed. Awaiting courier handover.',
+          location: 'Rebelive Digital Ops',
+        });
       }
-    );
 
-    const eddDate = new Date(baseDate.getTime() + 48 * 3600 * 1000);
-    const eddString = eddDate.toLocaleDateString('en-IN', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-    });
+      return {
+        isLive: Boolean(dbOrderContext.trackingNumber && dbOrderContext.trackingNumber !== 'SR-PENDING' && !dbOrderContext.trackingNumber.startsWith('SR-AWB-PENDING')),
+        orderNumber: orderNum,
+        trackingNumber: trackingNum,
+        courierName: dbOrderContext.courierName || 'Shiprocket Express',
+        currentStatus,
+        statusText,
+        estimatedDelivery: isDelivered ? 'Delivered to Recipient' : isCancelled ? 'N/A' : 'Pending Courier Pickup',
+        origin: 'Amritsar Cold Hub (Punjab)',
+        destination,
+        activities,
+      };
+    }
 
-    const currentStatus = isDelivered ? 'DELIVERED' : isOutForDelivery ? 'OUT_FOR_DELIVERY' : 'IN_TRANSIT';
-    const statusText = isDelivered
-      ? 'Delivered · Handed to Recipient'
-      : isOutForDelivery
-      ? 'Out for Delivery · Express Drop'
-      : 'In Transit - Express Cold Dispatch';
-
+    // Consignment not found on Shiprocket nor in MongoDB database
     return {
-      isLive: true,
-      orderNumber: orderNum,
-      trackingNumber: trackingNum,
-      courierName: dbOrderContext?.courierName || 'Shiprocket Express (Cold Logistics)',
-      currentStatus,
-      statusText,
-      estimatedDelivery: isDelivered ? `Delivered on ${fmt(d6)}` : `${eddString} (within 24–48 hours)`,
-      origin: 'Amritsar Cold Hub',
-      destination: `${city}, ${state}`,
-      activities,
-      shiprocketOrderId: `SR-${orderNum.replace(/[^0-9]/g, '').slice(-6)}`,
-      shiprocketShipmentId: `SHP-${orderNum.replace(/[^0-9]/g, '').slice(-7)}`,
+      isLive: false,
+      orderNumber: identifier,
+      trackingNumber: identifier,
+      courierName: 'Shiprocket Express',
+      currentStatus: 'NOT_FOUND',
+      statusText: 'No consignment found',
+      estimatedDelivery: 'N/A',
+      origin: '',
+      destination: '',
+      activities: [],
     };
   }
 
@@ -759,9 +735,10 @@ class ShiprocketService {
     redirect_url?: string;
   }): Promise<{
     success: boolean;
-    token: string;
-    orderId?: string;
-    expiresAt?: string;
+    token?: string | null;
+    orderId?: string | null;
+    expiresAt?: string | null;
+    error?: string;
     raw?: any;
   }> {
     const checkoutBaseUrl = 'https://checkout-api.shiprocket.com';
@@ -815,16 +792,11 @@ class ShiprocketService {
       }
     }
 
-    // Graceful fallback token for local dev or testing
-    const fallbackToken = `ft_${crypto.randomBytes(16).toString('hex')}`;
-    const fallbackOrderId = `fo_${Date.now().toString(16)}`;
-
     return {
-      success: true,
-      token: fallbackToken,
-      orderId: fallbackOrderId,
-      expiresAt: new Date(Date.now() + 3600 * 1000).toISOString(),
-      raw: { simulated: true, payload },
+      success: false,
+      token: undefined,
+      orderId: undefined,
+      error: 'Fastrr live token could not be obtained',
     };
   }
 

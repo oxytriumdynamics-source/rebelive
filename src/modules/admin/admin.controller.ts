@@ -1229,7 +1229,10 @@ export async function trackOrderShiprocket(req: Request, res: Response, next: Ne
     const id = paramStr(req);
     const order = await prisma.order.findUnique({
       where: { id },
-      include: { shippingAddress: true },
+      include: {
+        shippingAddress: true,
+        statusHistory: { orderBy: { createdAt: 'desc' } },
+      },
     });
 
     if (!order) throw new NotFoundError('Order not found');
@@ -1242,6 +1245,7 @@ export async function trackOrderShiprocket(req: Request, res: Response, next: Ne
         status: order.status,
         address: order.shippingAddress,
         trackingNumber: order.trackingNumber,
+        statusHistory: order.statusHistory,
       }
     );
 

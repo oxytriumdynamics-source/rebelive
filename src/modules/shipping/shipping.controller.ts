@@ -887,6 +887,19 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
     console.warn('Fastrr order details live lookup (non-fatal):', err);
   }
 
+  // Reject auto-creation if no legitimate Fastrr order data exists
+  if (
+    !params.customer &&
+    !params.shippingAddress &&
+    !params.items &&
+    !params.payment &&
+    !fastrrApiDetails?.order_id &&
+    !fastrrApiDetails?.data &&
+    !fastrrApiDetails?.customer
+  ) {
+    return null;
+  }
+
   // 3. Resolve Customer Info (Handles both Logged-In and Anonymous)
   const rawCustomer =
     params.customer ||
@@ -1343,18 +1356,6 @@ export async function trackShipment(req: Request, res: Response, next: NextFunct
       },
     });
 
-    // Auto-ingest fallback if order was placed via Fastrr but webhook has not yet arrived
-    if (!order) {
-      try {
-        order = await ingestOrConfirmFastrrOrder({
-          orderId: identifier,
-          authUserId: getAuthenticatedUserId(req),
-        });
-      } catch (autoErr) {
-        console.warn('Auto-ingestion attempt in trackShipment skipped:', autoErr);
-      }
-    }
-
     const trackingResult = await shiprocketService.trackShipment(
       order?.trackingNumber || identifier,
       order
@@ -1364,6 +1365,7 @@ export async function trackShipment(req: Request, res: Response, next: NextFunct
             status: order.status,
             address: order.shippingAddress,
             trackingNumber: order.trackingNumber,
+            statusHistory: order.statusHistory,
           }
         : undefined
     );
