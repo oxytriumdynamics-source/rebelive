@@ -4,6 +4,11 @@ import { NotFoundError, ValidationError } from '../../shared/errors/AppError';
 import { getPagination, buildPaginationResult } from '../../shared/types';
 import { hashPassword, verifyPassword } from '../../shared/utils/password';
 import { formatRebelId } from '../../shared/utils/rebelId';
+import {
+  getUserAddresses,
+  extractAddressFields,
+  isValidRealAddress,
+} from './address.service';
 
 const userId = (req: Request): string => req.user!.id;
 const paramId = (req: Request, key = 'id'): string => req.params[key] as string;
@@ -207,24 +212,141 @@ export async function changePassword(req: Request, res: Response, next: NextFunc
   } catch (err) { next(err); }
 }
 
-// GET /api/v1/users/addresses (Addresses are stored directly in orders in Shiprocket format)
-export async function getAddresses(_req: Request, res: Response): Promise<void> {
-  res.json({ status: 'success', data: [] });
+// ─── Addresses (Backed by Prisma Address Model & Order Deduplication) ─────
+
+export async function getAddresses(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const list = await getUserAddresses(userId(req));
+    res.json({ status: 'success', data: list });
+  } catch (err) { next(err); }
 }
 
-// POST /api/v1/users/addresses
-export async function createAddress(req: Request, res: Response): Promise<void> {
-  res.status(200).json({ status: 'success', data: req.body || {} });
+export async function createAddress(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const uId = userId(req);
+    const body = req.body || {};
+    const extracted = extractAddressFields(body);
+
+    if (!isValidRealAddress(extracted)) {
+      throw new ValidationError('A valid street line 1, city, and 6-digit PIN code are required.');
+    }
+
+    const isDefault = Boolean(body.isDefault);
+    if (isDefault) {
+      await prisma.address.updateMany({
+        where: { userId: uId },
+        data: { isDefault: false },
+      });
+    }
+
+    const existingCount = await prisma.address.count({ where: { userId: uId } });
+
+    const newAddress = await prisma.address.create({
+      data: {
+        userId: uId,
+        name: extracted.name || (req.user ? `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() : null) || null,
+        phone: extracted.phone || req.user?.phone || null,
+        line1: extracted.line1,
+        line2: extracted.line2,
+        city: extracted.city,
+        state: extracted.state || 'India',
+        country: extracted.country || 'India',
+        postalCode: extracted.postalCode,
+        label: extracted.label || (existingCount === 0 || isDefault ? 'Default Shipping' : 'Delivery Address'),
+        isDefault: isDefault || existingCount === 0,
+      },
+    });
+
+    res.status(201).json({ status: 'success', data: newAddress });
+  } catch (err) { next(err); }
 }
 
-// PATCH /api/v1/users/addresses/:id
-export async function updateAddress(req: Request, res: Response): Promise<void> {
-  res.json({ status: 'success', data: req.body || {} });
+export async function updateAddress(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const uId = userId(req);
+    const id = paramId(req);
+    const existing = await prisma.address.findFirst({
+      where: { id, userId: uId },
+    });
+    if (!existing) throw new NotFoundError('Address');
+
+    const body = req.body || {};
+    if (body.isDefault) {
+      await prisma.address.updateMany({
+        where: { userId: uId, id: { not: id } },
+        data: { isDefault: false },
+      });
+    }
+
+    const updated = await prisma.address.update({
+      where: { id },
+      data: {
+        ...(body.name !== undefined && { name: body.name?.trim() || null }),
+        ...(body.phone !== undefined && { phone: body.phone ? String(body.phone).replace(/\D/g, '').slice(-10) : null }),
+        ...(body.line1 !== undefined && { line1: body.line1.trim() }),
+        ...(body.line2 !== undefined && { line2: body.line2 ? body.line2.trim() : null }),
+        ...(body.city !== undefined && { city: body.city.trim() }),
+        ...(body.state !== undefined && { state: body.state.trim() }),
+        ...(body.country !== undefined && { country: body.country.trim() }),
+        ...(body.postalCode !== undefined && { postalCode: String(body.postalCode).replace(/\D/g, '').slice(0, 6) }),
+        ...(body.label !== undefined && { label: body.label?.trim() || null }),
+        ...(body.isDefault !== undefined && { isDefault: Boolean(body.isDefault) }),
+      },
+    });
+
+    res.json({ status: 'success', data: updated });
+  } catch (err) { next(err); }
 }
 
-// DELETE /api/v1/users/addresses/:id
-export async function deleteAddress(_req: Request, res: Response): Promise<void> {
-  res.json({ status: 'success', message: 'Address removed' });
+export async function setDefaultAddress(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const uId = userId(req);
+    const id = paramId(req);
+    const existing = await prisma.address.findFirst({
+      where: { id, userId: uId },
+    });
+    if (!existing) throw new NotFoundError('Address');
+
+    await prisma.address.updateMany({
+      where: { userId: uId },
+      data: { isDefault: false },
+    });
+
+    const updated = await prisma.address.update({
+      where: { id },
+      data: { isDefault: true },
+    });
+
+    res.json({ status: 'success', data: updated });
+  } catch (err) { next(err); }
+}
+
+export async function deleteAddress(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const uId = userId(req);
+    const id = paramId(req);
+    const existing = await prisma.address.findFirst({
+      where: { id, userId: uId },
+    });
+    if (!existing) throw new NotFoundError('Address');
+
+    await prisma.address.delete({ where: { id } });
+
+    if (existing.isDefault) {
+      const nextAddr = await prisma.address.findFirst({
+        where: { userId: uId },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (nextAddr) {
+        await prisma.address.update({
+          where: { id: nextAddr.id },
+          data: { isDefault: true },
+        });
+      }
+    }
+
+    res.json({ status: 'success', message: 'Address removed' });
+  } catch (err) { next(err); }
 }
 
 // GET /api/v1/users/notifications

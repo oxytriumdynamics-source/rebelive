@@ -8,6 +8,7 @@ import { ValidationError, NotFoundError, UnauthorizedError } from '../../shared/
 import { generateOrderNumber } from '../../shared/utils/generateOrderNumber';
 import type { PaymentMethod, OrderStatus } from '@prisma/client';
 import { mergePastGuestOrdersByPhone, normalizePhone } from '../users/users.controller';
+import { saveUniqueUserAddress } from '../users/address.service';
 
 const getAuthenticatedUserId = (req: Request): string | null => {
   return req.user ? req.user.id : null;
@@ -1427,6 +1428,15 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
         });
         existing.shippingAddress = updatedAddr as any;
 
+        if (existing.userId) {
+          saveUniqueUserAddress(
+            existing.userId,
+            updatedAddr,
+            `${updatedAddr.billing_customer_name || ''} ${updatedAddr.billing_last_name || ''}`.trim(),
+            updatedAddr.billing_phone
+          ).catch((err) => console.warn('Address auto-save error on order update:', err));
+        }
+
         // Auto dispatch to Shiprocket if not yet assigned live AWB
         if (!existing.shiprocketShipmentId || !existing.trackingNumber || existing.trackingNumber.startsWith('SR-')) {
           try {
@@ -1948,6 +1958,16 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
     } catch (mergeErr) {
       console.warn('Non-fatal mergePastGuestOrdersByPhone error:', mergeErr);
     }
+  }
+
+  // Save user's delivery address if unique (not same as last saved or existing address)
+  if (targetUserId && resolvedShippingAddress) {
+    saveUniqueUserAddress(
+      targetUserId,
+      resolvedShippingAddress,
+      rawName,
+      cleanPhone || rawPhone
+    ).catch((err) => console.warn('Address auto-save error on order create:', err));
   }
 
   // 10. Connect with Shiprocket adhoc order dispatch in background

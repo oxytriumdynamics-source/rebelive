@@ -1720,3 +1720,222 @@ export async function deleteCorporateQuery(req: Request, res: Response, next: Ne
   }
 }
 
+// ─── BLOG POSTS & ARTICLES MANAGEMENT ────────────────────
+
+function generateBlogSlug(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .slice(0, 100);
+}
+
+// GET /api/v1/admin/blogs
+export async function getBlogs(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const search = qStr(req, 'search');
+    const status = qStr(req, 'status'); // ALL, PUBLISHED, DRAFT
+    const category = qStr(req, 'category');
+
+    const where: any = {};
+
+    if (status === 'PUBLISHED') {
+      where.isPublished = true;
+    } else if (status === 'DRAFT') {
+      where.isPublished = false;
+    }
+
+    if (category && category !== 'ALL') {
+      where.category = category;
+    }
+
+    if (search) {
+      where.OR = [
+        { title: { contains: search, mode: 'insensitive' } },
+        { excerpt: { contains: search, mode: 'insensitive' } },
+        { author: { contains: search, mode: 'insensitive' } },
+        { category: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    const blogs = await prisma.blogPost.findMany({
+      where,
+      orderBy: [{ featured: 'desc' }, { createdAt: 'desc' }],
+    });
+
+    const counts = {
+      total: await prisma.blogPost.count(),
+      published: await prisma.blogPost.count({ where: { isPublished: true } }),
+      drafts: await prisma.blogPost.count({ where: { isPublished: false } }),
+    };
+
+    res.json({ status: 'success', data: blogs, counts });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// GET /api/v1/admin/blogs/:id
+export async function getBlog(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = paramStr(req);
+    const blog = await prisma.blogPost.findUnique({ where: { id } });
+    if (!blog) throw new NotFoundError('Blog post');
+    res.json({ status: 'success', data: blog });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /api/v1/admin/blogs
+export async function createBlog(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const {
+      title,
+      slug: customSlug,
+      excerpt,
+      content,
+      coverImage,
+      author,
+      authorRole,
+      authorAvatar,
+      category,
+      tags,
+      readTime,
+      isPublished,
+      featured,
+      metaTitle,
+      metaDesc,
+    } = req.body;
+
+    if (!title || !title.trim()) {
+      throw new ValidationError('Blog title is required');
+    }
+    if (!content || !content.trim()) {
+      throw new ValidationError('Blog content is required');
+    }
+
+    // Determine unique slug
+    let baseSlug = (customSlug ? String(customSlug) : generateBlogSlug(title)).trim();
+    if (!baseSlug) baseSlug = `post-${Date.now()}`;
+    let finalSlug = baseSlug;
+    let counter = 1;
+    while (await prisma.blogPost.findUnique({ where: { slug: finalSlug } })) {
+      finalSlug = `${baseSlug}-${counter}`;
+      counter++;
+    }
+
+    const isPub = isPublished !== undefined ? Boolean(isPublished) : true;
+
+    const blog = await prisma.blogPost.create({
+      data: {
+        title: title.trim(),
+        slug: finalSlug,
+        excerpt: excerpt ? String(excerpt).trim() : null,
+        content: String(content),
+        coverImage: coverImage ? String(coverImage).trim() : null,
+        author: author ? String(author).trim() : 'Rebelive Editorial',
+        authorRole: authorRole ? String(authorRole).trim() : 'Editorial Team',
+        authorAvatar: authorAvatar ? String(authorAvatar).trim() : null,
+        category: category ? String(category).trim() : 'Energy & Science',
+        tags: Array.isArray(tags) ? tags.map((t: any) => String(t).trim()).filter(Boolean) : [],
+        readTime: readTime ? String(readTime).trim() : '4 min read',
+        isPublished: isPub,
+        featured: Boolean(featured),
+        metaTitle: metaTitle ? String(metaTitle).trim() : null,
+        metaDesc: metaDesc ? String(metaDesc).trim() : null,
+        publishedAt: isPub ? new Date() : null,
+      },
+    });
+
+    res.status(201).json({ status: 'success', data: blog });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// PATCH /api/v1/admin/blogs/:id
+export async function updateBlog(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = paramStr(req);
+    const existing = await prisma.blogPost.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundError('Blog post');
+
+    const {
+      title,
+      slug: newSlug,
+      excerpt,
+      content,
+      coverImage,
+      author,
+      authorRole,
+      authorAvatar,
+      category,
+      tags,
+      readTime,
+      isPublished,
+      featured,
+      metaTitle,
+      metaDesc,
+    } = req.body;
+
+    const data: any = {};
+
+    if (title !== undefined) data.title = String(title).trim();
+    if (excerpt !== undefined) data.excerpt = excerpt ? String(excerpt).trim() : null;
+    if (content !== undefined) data.content = String(content);
+    if (coverImage !== undefined) data.coverImage = coverImage ? String(coverImage).trim() : null;
+    if (author !== undefined) data.author = author ? String(author).trim() : 'Rebelive Editorial';
+    if (authorRole !== undefined) data.authorRole = authorRole ? String(authorRole).trim() : null;
+    if (authorAvatar !== undefined) data.authorAvatar = authorAvatar ? String(authorAvatar).trim() : null;
+    if (category !== undefined) data.category = category ? String(category).trim() : 'Energy & Science';
+    if (tags !== undefined) {
+      data.tags = Array.isArray(tags) ? tags.map((t: any) => String(t).trim()).filter(Boolean) : [];
+    }
+    if (readTime !== undefined) data.readTime = readTime ? String(readTime).trim() : '4 min read';
+    if (featured !== undefined) data.featured = Boolean(featured);
+    if (metaTitle !== undefined) data.metaTitle = metaTitle ? String(metaTitle).trim() : null;
+    if (metaDesc !== undefined) data.metaDesc = metaDesc ? String(metaDesc).trim() : null;
+
+    if (isPublished !== undefined) {
+      const pub = Boolean(isPublished);
+      data.isPublished = pub;
+      if (pub && !existing.publishedAt) {
+        data.publishedAt = new Date();
+      }
+    }
+
+    if (newSlug !== undefined && String(newSlug).trim()) {
+      const cleanSlug = generateBlogSlug(String(newSlug));
+      if (cleanSlug !== existing.slug) {
+        const conflict = await prisma.blogPost.findUnique({ where: { slug: cleanSlug } });
+        if (conflict && conflict.id !== id) {
+          throw new ValidationError('A blog post with this URL slug already exists.');
+        }
+        data.slug = cleanSlug;
+      }
+    }
+
+    const updated = await prisma.blogPost.update({
+      where: { id },
+      data,
+    });
+
+    res.json({ status: 'success', data: updated });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// DELETE /api/v1/admin/blogs/:id
+export async function deleteBlog(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = paramStr(req);
+    await prisma.blogPost.delete({ where: { id } });
+    res.json({ status: 'success', message: 'Blog post deleted successfully' });
+  } catch (err) {
+    next(err);
+  }
+}
+

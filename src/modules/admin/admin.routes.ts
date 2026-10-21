@@ -100,4 +100,12 @@ router.get('/corporate-queries', adminController.getCorporateQueries);
 router.patch('/corporate-queries/:id/status', adminController.updateCorporateQueryStatus);
 router.delete('/corporate-queries/:id', requireSuperAdmin, adminController.deleteCorporateQuery);
 
+// ─── Blog Posts & Articles Management ─────────────────
+router.get('/blogs', adminController.getBlogs);
+router.get('/blogs/:id', adminController.getBlog);
+router.post('/blogs', adminController.createBlog);
+router.patch('/blogs/:id', adminController.updateBlog);
+router.delete('/blogs/:id', adminController.deleteBlog);
+
 export default router;
+

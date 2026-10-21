@@ -5,6 +5,7 @@ import { generateOrderNumber } from '../../shared/utils/generateOrderNumber';
 import { getPagination, buildPaginationResult } from '../../shared/types';
 import { shiprocketService } from '../shipping/shiprocket.service';
 import { buildShiprocketAddress } from '../shipping/shipping.controller';
+import { saveUniqueUserAddress } from '../users/address.service';
 import type { PaymentMethod, OrderStatus, PaymentStatus } from '@prisma/client';
 
 const uid = (req: Request) => req.user!.id;
@@ -226,6 +227,14 @@ export async function placeOrder(req: Request, res: Response, next: NextFunction
 
       return newOrder;
     });
+
+    // Save user's shipping address if unique (not duplicate of last saved or existing address)
+    saveUniqueUserAddress(
+      uid(req),
+      resolvedShippingAddress,
+      `${req.user?.firstName || ''} ${req.user?.lastName || ''}`.trim(),
+      req.user?.phone
+    ).catch((err) => console.warn('Address auto-save warning:', err));
 
     // Automatically send and connect order to Shiprocket Logistics
     const user = await prisma.user.findUnique({

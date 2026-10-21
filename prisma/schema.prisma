@@ -112,8 +112,30 @@ model User {
   notifications  Notification[]
   preferences    UserPreference?
   auditLogs      AuditLog[]
+  addresses      Address[]
 
   @@map("users")
+}
+
+model Address {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId     String   @map("user_id") @db.ObjectId
+  name       String?
+  phone      String?
+  line1      String
+  line2      String?
+  city       String
+  state      String
+  country    String   @default("India")
+  postalCode String   @map("postal_code")
+  label      String?  @default("Home")
+  isDefault  Boolean  @default(false) @map("is_default")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("addresses")
 }
 
 model UserPreference {
@@ -776,5 +798,32 @@ model CorporateQuery {
   updatedAt           DateTime @updatedAt @map("updated_at")
 
   @@map("corporate_queries")
+}
+
+// ─── BLOG POSTS & ARTICLES ─────────────────────────────
+
+model BlogPost {
+  id           String    @id @default(auto()) @map("_id") @db.ObjectId
+  slug         String    @unique
+  title        String
+  excerpt      String?
+  content      String    // Rich text HTML with headings, formatting, and images
+  coverImage   String?   @map("cover_image")
+  author       String    @default("Rebelive Editorial")
+  authorRole   String?   @default("Editorial Team") @map("author_role")
+  authorAvatar String?   @map("author_avatar")
+  category     String    @default("Energy & Science")
+  tags         String[]  @default([])
+  readTime     String?   @default("4 min read") @map("read_time")
+  isPublished  Boolean   @default(true) @map("is_published")
+  featured     Boolean   @default(false)
+  views        Int       @default(0)
+  metaTitle    String?   @map("meta_title")
+  metaDesc     String?   @map("meta_desc")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  publishedAt  DateTime? @map("published_at")
+
+  @@map("blog_posts")
 }
 

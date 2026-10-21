@@ -10,4 +10,10 @@ router.get('/testimonials', contentController.getTestimonials);
 router.post('/newsletter/subscribe', contactFormLimiter, contentController.subscribeNewsletter);
 router.post('/newsletter/unsubscribe', contactFormLimiter, contentController.unsubscribeNewsletter);
 
+// Blogs (Public)
+router.get('/blogs', contentController.getBlogPosts);
+router.get('/blogs/categories', contentController.getBlogCategories);
+router.get('/blogs/:slug', contentController.getBlogPostBySlug);
+
 export default router;
+

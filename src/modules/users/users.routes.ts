@@ -16,6 +16,7 @@ router.patch('/change-password', usersController.changePassword);
 // Addresses
 router.get('/addresses', usersController.getAddresses);
 router.post('/addresses', usersController.createAddress);
+router.patch('/addresses/:id/default', usersController.setDefaultAddress);
 router.patch('/addresses/:id', usersController.updateAddress);
 router.delete('/addresses/:id', usersController.deleteAddress);
 
