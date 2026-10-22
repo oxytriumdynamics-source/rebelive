@@ -513,12 +513,12 @@ export async function getProducts(req: Request, res: Response, next: NextFunctio
     const search = qStr(req, 'search');
     const where = search
       ? {
-          OR: [
-            { name: { contains: search, mode: 'insensitive' as const } },
-            { slug: { contains: search, mode: 'insensitive' as const } },
-            { flavor: { contains: search, mode: 'insensitive' as const } },
-          ],
-        }
+        OR: [
+          { name: { contains: search, mode: 'insensitive' as const } },
+          { slug: { contains: search, mode: 'insensitive' as const } },
+          { flavor: { contains: search, mode: 'insensitive' as const } },
+        ],
+      }
       : {};
 
     const products = await prisma.product.findMany({
@@ -1044,17 +1044,17 @@ export async function dispatchOrderToShiprocket(req: Request, res: Response, nex
       },
       items: order.items && order.items.length > 0
         ? order.items.map((i) => ({
-            name: `${i.productName || 'REBELIVE'} - ${i.variantName || 'Bio-Energy'}`,
-            sku: i.sku || 'RBL-APEX',
-            units: i.quantity || 1,
-            selling_price: i.unitPrice || 499,
-          }))
+          name: `${i.productName || 'REBELIVE'} - ${i.variantName || 'Energy Drinks'}`,
+          sku: i.sku || 'RBL-APEX',
+          units: i.quantity || 1,
+          selling_price: i.unitPrice || 499,
+        }))
         : [{
-            name: 'REBELIVE Clean Bio-Energy Cans',
-            sku: 'RBL-APEX-6PK',
-            units: 1,
-            selling_price: order.total || 499,
-          }],
+          name: 'REBELIVE Clean Energy Drinks Cans',
+          sku: 'RBL-APEX-6PK',
+          units: 1,
+          selling_price: order.total || 499,
+        }],
       paymentMethod,
       subtotal: order.subtotal,
       discountAmount: order.discountAmount,
@@ -1073,9 +1073,8 @@ export async function dispatchOrderToShiprocket(req: Request, res: Response, nex
         statusHistory: {
           create: {
             status: 'SHIPPED',
-            note: `Posted to Shiprocket (${shiprocketResult.courierName || 'Shiprocket Express'}). AWB: ${
-              shiprocketResult.awbCode
-            }`,
+            note: `Posted to Shiprocket (${shiprocketResult.courierName || 'Shiprocket Express'}). AWB: ${shiprocketResult.awbCode
+              }`,
           },
         },
       },
@@ -1148,17 +1147,17 @@ export async function syncAllOrdersToShiprocket(req: Request, res: Response, nex
           },
           items: order.items && order.items.length > 0
             ? order.items.map((i) => ({
-                name: `${i.productName || 'REBELIVE'} - ${i.variantName || 'Bio-Energy'}`,
-                sku: i.sku || 'RBL-APEX',
-                units: i.quantity || 1,
-                selling_price: i.unitPrice || 499,
-              }))
+              name: `${i.productName || 'REBELIVE'} - ${i.variantName || 'Energy Drinks'}`,
+              sku: i.sku || 'RBL-APEX',
+              units: i.quantity || 1,
+              selling_price: i.unitPrice || 499,
+            }))
             : [{
-                name: 'REBELIVE Clean Bio-Energy Cans',
-                sku: 'RBL-APEX-6PK',
-                units: 1,
-                selling_price: order.total || 499,
-              }],
+              name: 'REBELIVE Clean Energy Drinks Cans',
+              sku: 'RBL-APEX-6PK',
+              units: 1,
+              selling_price: order.total || 499,
+            }],
           paymentMethod,
           subtotal: order.subtotal,
           discountAmount: order.discountAmount,

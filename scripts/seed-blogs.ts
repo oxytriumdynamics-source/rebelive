@@ -7,19 +7,19 @@ const prisma = new PrismaClient();
 
 const SAMPLE_BLOGS = [
   {
-    slug: 'science-of-clean-bio-energy-nootropics',
-    title: 'The Science of Clean Bio-Energy: Why Traditional Energy Drinks Crash and How Nootropics Redefine Focus',
+    slug: 'science-of-clean-Energy Drinks-nootropics',
+    title: 'The Science of Clean Energy Drinks: Why Traditional Energy Drinks Crash and How Nootropics Redefine Focus',
     excerpt: 'Explore how neurotransmitter signaling, zero refined sugars, and precision nootropic stacks deliver sustained cognitive drive without the dreaded 2 PM crash.',
     coverImage: '/brand/APEX.webp',
     author: 'Dr. Marcus Vance',
     authorRole: 'Head of Bio-Nutrient Formulation',
     authorAvatar: '/brand/panther_white_icon-transparent.webp',
-    category: 'Bio-Energy & Science',
-    tags: ['Bio-Energy', 'Nootropics', 'Clean Caffeine', 'Cognitive Focus'],
+    category: 'Energy & Science',
+    tags: ['Energy Drinks', 'Nootropics', 'Clean Caffeine', 'Cognitive Focus'],
     readTime: '5 min read',
     isPublished: true,
     featured: true,
-    metaTitle: 'The Science of Clean Bio-Energy | REBELIVE Labs',
+    metaTitle: 'The Science of Clean Energy Drinks | REBELIVE Labs',
     metaDesc: 'Discover the neuro-biochemical mechanisms of clean caffeine paired with L-theanine and adaptogenic electrolytes.',
     content: `
 <h2>The Crash Dilemma: Deconstructing Old-Guard Energy</h2>
@@ -34,10 +34,10 @@ const SAMPLE_BLOGS = [
   <span class="block text-xs font-mono text-white/50 mt-2">— REBELIVE Biochemical Research Paper #04</span>
 </div>
 
-<h2>Enter Precision Bio-Energy: The Nootropic Matrix</h2>
+<h2>Enter Precision Energy Drinks: The Nootropic Matrix</h2>
 <p>At <strong>REBELIVE</strong>, we set out to construct an alternative from first principles. Rather than shocking the adrenal glands with synthetic stimulants, our formula utilizes a synergistic ratio of natural caffeine, purified L-Theanine, and functional B-vitamin complexes.</p>
 
-<img src="/brand/science-backed-bg.webp" alt="Clean Bio-Energy Scientific Formulation" class="w-full rounded-2xl my-6 border border-white/10 shadow-2xl" />
+<img src="/brand/science-backed-bg.webp" alt="Clean Energy Drinks Scientific Formulation" class="w-full rounded-2xl my-6 border border-white/10 shadow-2xl" />
 
 <h3>1. Adenosine Receptor Antagonism Without the Tremors</h3>
 <p>Natural caffeine acts by competitively binding to adenosine A1 and A2A receptors in the central nervous system. When coupled with L-Theanine—an amino acid derived from high-grade green tea—it promotes alpha brain-wave activity (8–12 Hz), which is neuro-electrically linked to a state of <em>relaxed alertness</em> and deep flow state.</p>
@@ -52,7 +52,7 @@ const SAMPLE_BLOGS = [
 </ul>
 
 <h2>The Modern Rebel's Ritual</h2>
-<p>Whether you're breaking personal records in the training room or architecting mission-critical code at midnight, biological stamina requires intelligent fueling. The era of jittery synthetic energy is over. Welcome to clean bio-energy.</p>
+<p>Whether you're breaking personal records in the training room or architecting mission-critical code at midnight, biological stamina requires intelligent fueling. The era of jittery synthetic energy is over. Welcome to clean Energy Drinks.</p>
     `.trim(),
   },
   {
@@ -63,8 +63,8 @@ const SAMPLE_BLOGS = [
     author: 'Elena Rostova',
     authorRole: 'Director of Performance Athletics',
     authorAvatar: '/brand/panther_white_icon-transparent.webp',
-    category: 'Hydration & Performance',
-    tags: ['Hydration', 'Electrolytes', 'Performance', 'Endurance'],
+    category: 'Nutrition',
+    tags: ['Hydration', 'Electrolytes', 'Nutrition', 'Performance', 'Endurance'],
     readTime: '4 min read',
     isPublished: true,
     featured: false,
@@ -103,8 +103,8 @@ const SAMPLE_BLOGS = [
     author: 'Kaelen Thorne',
     authorRole: 'Sleep & Human Optimization Specialist',
     authorAvatar: '/brand/panther_white_icon-transparent.webp',
-    category: 'Optimization & Sleep',
-    tags: ['Caffeine Timing', 'Circadian Rhythm', 'Deep Sleep', 'Focus'],
+    category: 'Mind & Focus',
+    tags: ['Caffeine Timing', 'Circadian Rhythm', 'Mind & Focus', 'Deep Sleep', 'Focus'],
     readTime: '4 min read',
     isPublished: true,
     featured: false,
@@ -126,7 +126,7 @@ const SAMPLE_BLOGS = [
 <h2>Understanding Caffeine Clearance Half-Life</h2>
 <p>The metabolic half-life of caffeine averages between 5 to 7 hours in healthy adults. That means if you drink 150mg of caffeine at 4:00 PM, approximately 75mg remains active in your bloodstream at 10:00 PM—interfering with slow-wave delta sleep and restorative REM phases.</p>
 
-<img src="/brand/Capella.webp" alt="Capella Electric Bio-Energy Can" class="w-full max-w-md mx-auto rounded-2xl my-6 border border-white/10 shadow-2xl" />
+<img src="/brand/Capella.webp" alt="Capella Electric Energy Drinks Can" class="w-full max-w-md mx-auto rounded-2xl my-6 border border-white/10 shadow-2xl" />
 
 <h2>The REBELIVE Framework:</h2>
 <ul>
@@ -139,18 +139,40 @@ const SAMPLE_BLOGS = [
     `.trim(),
   },
   {
+    slug: 'microbiome-axis-gut-health-and-athletic-drive',
+    title: 'The Gut-Brain Axis: How Microbiome Health Directs Daily Cognitive Drive and Immunity',
+    excerpt: 'Uncovering the biological cross-talk between beneficial intestinal flora and neurotransmitter production for sustained daytime vigor.',
+    coverImage: '/brand/DSCF8117.webp',
+    author: 'Dr. Soraya Lin',
+    authorRole: 'Microbiome Researcher',
+    authorAvatar: '/brand/panther_white_icon-transparent.webp',
+    category: 'Gut Health',
+    tags: ['Gut Health', 'Microbiome', 'Energy Drinks', 'Cognitive Drive', 'Immunity'],
+    readTime: '5 min read',
+    isPublished: true,
+    featured: false,
+    metaTitle: 'The Gut-Brain Axis & Everyday Performance | REBELIVE',
+    metaDesc: 'Explore how microbiome equilibrium dictates systemic neurotransmitter balance and energy metabolism.',
+    content: `
+<h2>The Second Brain in Your Abdomen</h2>
+<p>Over 90% of your body’s serotonin and roughly 50% of its dopamine are synthesized in the enteric nervous system, regulated directly by your gut microbiota. When your microbiome is assaulted by artificial sweeteners, emulsifiers, and processed additives, cellular inflammation triggers sluggish cognitive reflexes and systemic fatigue.</p>
+
+<p>Clean formulation means honoring the digestive tract. By eliminating harsh synthetic dyes and chemical preservatives, REBELIVE protects your delicate gastrointestinal lining while providing cellular hydration that promotes smooth, steady nutrient absorption.</p>
+    `.trim(),
+  },
+  {
     slug: 'the-rebel-mindset-defying-conventional-beverage-standards',
     title: 'The Rebel Mindset: Why We Refused to Conform to the Beverage Industry Playbook',
     excerpt: 'The story behind REBELIVE’s founding: ditching artificial dyes, cutting out the middlemen, and engineering what real performers demanded.',
-    coverImage: '/brand/DSCF8117.webp',
+    coverImage: '/brand/APEX.webp',
     author: 'Oxytrium Dynamics Founder',
     authorRole: 'Founding Team',
     authorAvatar: '/brand/panther_white_icon-transparent.webp',
-    category: 'Brand Story & Culture',
-    tags: ['Rebelive', 'Founders Story', 'Innovation', 'Zero Sugar'],
+    category: 'Rebel Mindset',
+    tags: ['Rebel Mindset', 'Founders Story', 'Innovation', 'Zero Sugar'],
     readTime: '6 min read',
     isPublished: true,
-    featured: true,
+    featured: false,
     metaTitle: 'The Rebel Mindset | REBELIVE Founders Story',
     metaDesc: 'Discover why REBELIVE was founded to disrupt the legacy chemical beverage monopoly.',
     content: `
@@ -176,6 +198,28 @@ const SAMPLE_BLOGS = [
 </ul>
 
 <p>REBELIVE is not for everyone. It is for those who refuse complacency. Wake. Fuel. Rebel.</p>
+    `.trim(),
+  },
+  {
+    slug: 'inside-rebelive-origins-clean-label-engineering',
+    title: 'Inside Rebelive: Formulating Clean High-Performance Energy from First Principles',
+    excerpt: 'A behind-the-scenes look into our testing labs, ingredient sourcing protocols, and the relentless pursuit of zero-compromise fuel.',
+    coverImage: '/brand/Capella.webp',
+    author: 'Rebelive R&D Lab',
+    authorRole: 'Product Architecture',
+    authorAvatar: '/brand/panther_white_icon-transparent.webp',
+    category: 'Inside Rebelive',
+    tags: ['Inside Rebelive', 'Brand Story', 'Laboratory', 'Quality', 'Performance'],
+    readTime: '5 min read',
+    isPublished: true,
+    featured: false,
+    metaTitle: 'Inside Rebelive: Clean Label Engineering | REBELIVE',
+    metaDesc: 'Take a look inside the Rebelive laboratory where clean energy science meets brutalist aesthetic standards.',
+    content: `
+<h2>Engineering from First Principles</h2>
+<p>Most canned beverage brands outsource their formulation to white-label flavour houses that reuse identical sugary bases. At REBELIVE, every ingredient ratio was designed in-house from ground zero.</p>
+
+<p>We systematically stress-tested active nootropics alongside ionic mineral salts to ensure that the mouthfeel, carbonation bite, and sustained cognitive boost delivered an unrivaled sensory and neuro-performance experience.</p>
     `.trim(),
   },
 ];
