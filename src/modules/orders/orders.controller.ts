@@ -228,12 +228,11 @@ export async function placeOrder(req: Request, res: Response, next: NextFunction
       return newOrder;
     });
 
-    // Save user's shipping address if unique (not duplicate of last saved or existing address)
     saveUniqueUserAddress(
       uid(req),
       resolvedShippingAddress,
       `${req.user?.firstName || ''} ${req.user?.lastName || ''}`.trim(),
-      req.user?.phone
+      req.user?.phone || undefined
     ).catch((err) => console.warn('Address auto-save warning:', err));
 
     // Automatically send and connect order to Shiprocket Logistics

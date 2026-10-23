@@ -327,6 +327,7 @@ export async function getUsers(req: Request, res: Response, next: NextFunction):
           { email: { contains: search, mode: 'insensitive' as const } },
           { firstName: { contains: search, mode: 'insensitive' as const } },
           { lastName: { contains: search, mode: 'insensitive' as const } },
+          { phone: { contains: search, mode: 'insensitive' as const } },
         ],
       }),
     };
@@ -350,7 +351,16 @@ export async function getUsers(req: Request, res: Response, next: NextFunction):
       totalSpent: u.orders.reduce((sum, o) => sum + (o.status !== 'CANCELLED' ? o.total : 0), 0),
     }));
 
-    res.json({ status: 'success', ...buildPaginationResult(data, total, page, limit) });
+    const paginationResult = buildPaginationResult(data, total, page, limit);
+
+    res.json({
+      status: 'success',
+      ...paginationResult,
+      total,
+      page,
+      limit,
+      totalPages: paginationResult.pagination.totalPages,
+    });
   } catch (err) {
     next(err);
   }
