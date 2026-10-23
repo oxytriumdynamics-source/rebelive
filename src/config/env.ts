@@ -21,6 +21,7 @@ const envSchema = z.object({
   REDIS_URL: z.string().default('redis://localhost:6379'),
 
   CLIENT_URL: z.string().default('http://localhost:3000'),
+  EMAIL_ASSETS_BASE_URL: z.string().default('https://www.rebelive.com'),
 
   RATE_LIMIT_WINDOW_MS: z.string().default('900000'),
   RATE_LIMIT_MAX: z.string().default('100'),

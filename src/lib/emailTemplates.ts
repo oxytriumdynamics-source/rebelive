@@ -1,13 +1,20 @@
 // ─── Email HTML Templates ──────────────────────────────
 // Clean black-and-white minimal design with REBELIVE logo + panther mascot.
-// Images are served from the frontend (CLIENT_URL env var).
+// For emails, remote mail clients (Gmail proxy, Apple Mail, Outlook) require a publicly accessible HTTPS domain.
+// Localhost URLs (e.g. http://localhost:3000) will always fail to load in recipient inboxes.
 
-const CLIENT_URL = process.env.CLIENT_URL ?? 'http://localhost:3000';
+const CLIENT_URL = process.env.CLIENT_URL ?? 'https://www.rebelive.com';
 
-// Logo images hosted on the frontend's /public/brand/ folder
-const LOGO_WHITE = `${CLIENT_URL}/brand/rebelive-white.png`;  // white wordmark (for dark bg)
-const LOGO_BLACK = `${CLIENT_URL}/brand/REBELIVE Logo Black.png`;  // black wordmark (for white sections)
-const PANTHER_ICON = `${CLIENT_URL}/brand/panther_white_icon-transparent.png`; // mascot seal
+const ASSET_BASE_URL =
+  process.env.EMAIL_ASSETS_BASE_URL ||
+  (process.env.CLIENT_URL && !process.env.CLIENT_URL.includes('localhost') && !process.env.CLIENT_URL.includes('127.0.0.1')
+    ? process.env.CLIENT_URL
+    : 'https://www.rebelive.com');
+
+// Logo images hosted on the frontend's /public/brand/ folder (.webp format)
+const LOGO_WHITE = `${ASSET_BASE_URL}/brand/rebelive-white.webp`; // white wordmark (for dark bg)
+const LOGO_BLACK = `${ASSET_BASE_URL}/brand/REBELIVE%20Logo%20Black.webp`; // black wordmark (for white sections)
+const PANTHER_ICON = `${ASSET_BASE_URL}/brand/panther_white_icon-transparent.webp`; // mascot seal
 
 // ─── Base wrapper ──────────────────────────────────────
 
