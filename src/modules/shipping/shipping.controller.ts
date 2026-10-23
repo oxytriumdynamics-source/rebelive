@@ -751,7 +751,7 @@ export async function initiateFastrrCheckout(req: Request, res: Response, next: 
           country: primarySavedAddress.billing_country || primarySavedAddress.country || 'India',
         }
         : undefined,
-      redirect_url: `${env.CLIENT_URL}/order-confirmation`,
+      redirect_url: (req.body as any).redirectUrl || (req.headers.origin ? `${req.headers.origin}/order-confirmation` : `${env.CLIENT_URL}/order-confirmation`),
     });
 
     res.status(200).json({
@@ -930,15 +930,23 @@ export async function generateFastrrToken(req: Request, res: Response, next: Nex
       },
       customer: prefillCustomer,
       shipping_address: prefillAddress,
-      redirect_url: redirectUrl || `${env.CLIENT_URL}/order-confirmation`,
+      redirect_url: redirectUrl || (req.headers.origin ? `${req.headers.origin}/order-confirmation` : `${env.CLIENT_URL}/order-confirmation`),
     });
+
+    if (!tokenResult.token) {
+      res.status(502).json({
+        status: 'error',
+        message: tokenResult.error || 'Fastrr checkout token could not be obtained from Shiprocket. Please check API credentials.',
+      });
+      return;
+    }
 
     res.status(200).json({
       status: 'success',
       token: tokenResult.token,
       order_id: tokenResult.orderId,
       expires_at: tokenResult.expiresAt,
-      redirect_url: redirectUrl || `${env.CLIENT_URL}/order-confirmation`,
+      redirect_url: redirectUrl || (req.headers.origin ? `${req.headers.origin}/order-confirmation` : `${env.CLIENT_URL}/order-confirmation`),
     });
   } catch (err) {
     next(err);
