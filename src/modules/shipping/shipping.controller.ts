@@ -9,6 +9,7 @@ import { generateOrderNumber } from '../../shared/utils/generateOrderNumber';
 import type { PaymentMethod, OrderStatus } from '@prisma/client';
 import { mergePastGuestOrdersByPhone, normalizePhone } from '../users/users.controller';
 import { saveUniqueUserAddress } from '../users/address.service';
+import { sendOrderConfirmationEmail, isAuthenticEmail } from '../../lib/orderEmail';
 
 const getAuthenticatedUserId = (req: Request): string | null => {
   return req.user ? req.user.id : null;
@@ -247,6 +248,8 @@ export function buildShiprocketAddress(rawAddr: any = {}, rawCust: any = {}, raw
   let emailStr = (
     rawCust?.email ||
     rawCust?.customer_email ||
+    rawCust?.userEmail ||
+    rawCust?.user?.email ||
     rawAddr?.email ||
     addrObj?.email ||
     addrObj?.billing_email ||
@@ -254,9 +257,9 @@ export function buildShiprocketAddress(rawAddr: any = {}, rawCust: any = {}, raw
     ''
   ).trim().toLowerCase();
 
-  if (!emailStr || emailStr.includes('rebelive.co')) {
+  if (!isAuthenticEmail(emailStr)) {
     const textEmailMatch = fullText.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/);
-    if (textEmailMatch) {
+    if (textEmailMatch && isAuthenticEmail(textEmailMatch[0])) {
       emailStr = textEmailMatch[0].toLowerCase();
     } else if (cleanPhoneDigits) {
       emailStr = `${cleanPhoneDigits}@fastrr.com`;
@@ -1047,26 +1050,34 @@ export async function completeFastrrCheckout(req: Request, res: Response, next: 
             emailVerified: true,
           },
         });
-      } else if (!existingUser.phone && cleanCustomerPhone) {
-        // Save phone to existing account if not previously saved
-        await prisma.user.update({
-          where: { id: existingUser.id },
-          data: { phone: cleanCustomerPhone },
-        });
+      } else {
+        if (!existingUser.phone && cleanCustomerPhone) {
+          // Save phone to existing account if not previously saved
+          await prisma.user.update({
+            where: { id: existingUser.id },
+            data: { phone: cleanCustomerPhone },
+          });
+        }
+        if (isAuthenticEmail(existingUser.email)) {
+          customer.email = existingUser.email;
+        }
       }
       targetUserId = existingUser.id;
     } else {
       // User is logged in: if their account does not have phone saved, save it now!
-      if (cleanCustomerPhone) {
-        const loggedInUser = await prisma.user.findUnique({
-          where: { id: targetUserId },
-          select: { phone: true },
-        });
-        if (loggedInUser && !loggedInUser.phone) {
+      const loggedInUser = await prisma.user.findUnique({
+        where: { id: targetUserId },
+        select: { phone: true, email: true },
+      });
+      if (loggedInUser) {
+        if (!loggedInUser.phone && cleanCustomerPhone) {
           await prisma.user.update({
             where: { id: targetUserId },
             data: { phone: cleanCustomerPhone },
           });
+        }
+        if (isAuthenticEmail(loggedInUser.email)) {
+          customer.email = loggedInUser.email;
         }
       }
     }
@@ -1286,6 +1297,10 @@ export async function completeFastrrCheckout(req: Request, res: Response, next: 
       },
     });
 
+    sendOrderConfirmationEmail(updatedOrder.id).catch((mailErr) => {
+      console.warn('⚠️ Non-fatal error sending order confirmation email in Fastrr complete:', mailErr);
+    });
+
     res.status(201).json({
       status: 'success',
       message: 'Fastrr checkout completed and order dispatched to Shiprocket',
@@ -1494,6 +1509,10 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
         }
       }
 
+      if (existing.status === 'CONFIRMED' || existing.payments?.[0]?.status === 'COMPLETED') {
+        sendOrderConfirmationEmail(existing.id).catch(() => {});
+      }
+
       return existing;
     }
 
@@ -1665,25 +1684,33 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
             });
           }
         }
-      } else if (!existingUser.phone && cleanPhone) {
-        await prisma.user.update({
-          where: { id: existingUser.id },
-          data: { phone: cleanPhone },
-        });
+      } else {
+        if (!existingUser.phone && cleanPhone) {
+          await prisma.user.update({
+            where: { id: existingUser.id },
+            data: { phone: cleanPhone },
+          });
+        }
+        if (isAuthenticEmail(existingUser.email)) {
+          rawCustomer.email = existingUser.email;
+        }
       }
       targetUserId = existingUser.id;
     } else {
       // Authenticated user: save phone to profile if not yet saved
-      if (cleanPhone) {
-        const loggedUser = await prisma.user.findUnique({
-          where: { id: targetUserId },
-          select: { phone: true },
-        });
-        if (loggedUser && !loggedUser.phone) {
+      const loggedUser = await prisma.user.findUnique({
+        where: { id: targetUserId },
+        select: { phone: true, email: true },
+      });
+      if (loggedUser) {
+        if (!loggedUser.phone && cleanPhone) {
           await prisma.user.update({
             where: { id: targetUserId },
             data: { phone: cleanPhone },
           });
+        }
+        if (isAuthenticEmail(loggedUser.email)) {
+          rawCustomer.email = loggedUser.email;
         }
       }
     }
@@ -2031,6 +2058,10 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
       }
     }
 
+    sendOrderConfirmationEmail(newOrder.id).catch((mailErr) => {
+      console.warn('⚠️ Non-fatal error sending order confirmation email in Fastrr ingest:', mailErr);
+    });
+
     return newOrder;
   })();
 
@@ -2297,10 +2328,14 @@ export async function handleFastrrWebhook(req: Request, res: Response, next: Nex
     const signatureHeader =
       (req.headers[env.SR_CHECKOUT_WEBHOOK_SIG_HEADER.toLowerCase()] as string) ||
       (req.headers['x-api-hmac-sha256'] as string) ||
-      (req.headers['x-fastrr-signature'] as string);
+      (req.headers['x-fastrr-signature'] as string) ||
+      (req.headers['x-signature'] as string) ||
+      (req.headers['x-api-key'] as string) ||
+      (req.headers['x-webhook-signature'] as string);
 
     if (env.SR_CHECKOUT_API_SECRET && signatureHeader) {
-      const isValid = shiprocketService.verifyFastrrSignature(JSON.stringify(req.body), signatureHeader);
+      const payloadToVerify = (req as any).rawBody || JSON.stringify(req.body);
+      const isValid = shiprocketService.verifyFastrrSignature(payloadToVerify, signatureHeader);
       if (!isValid) {
         console.warn('⚠️ Fastrr webhook signature mismatch, proceeding with safe ingestion');
       }
@@ -2449,6 +2484,10 @@ export async function handleFastrrWebhook(req: Request, res: Response, next: Nex
             data: { status: 'COMPLETED', paidAt: new Date() },
           });
         }
+
+        sendOrderConfirmationEmail(existingOrder.id).catch((mailErr) => {
+          console.warn('⚠️ Non-fatal error sending order confirmation email on Fastrr webhook:', mailErr);
+        });
       } else if (event.includes('cancel')) {
         await prisma.order.update({
           where: { id: existingOrder.id },
@@ -3124,6 +3163,12 @@ export async function handleShiprocketOrderWebhook(req: Request, res: Response, 
           },
         },
       });
+
+      if (order?.id) {
+        sendOrderConfirmationEmail(order.id).catch((mailErr) => {
+          console.warn('⚠️ Non-fatal error sending order confirmation email on Shiprocket order webhook:', mailErr);
+        });
+      }
     }
 
     res.status(200).json({

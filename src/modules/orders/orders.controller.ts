@@ -6,6 +6,7 @@ import { getPagination, buildPaginationResult } from '../../shared/types';
 import { shiprocketService } from '../shipping/shiprocket.service';
 import { buildShiprocketAddress } from '../shipping/shipping.controller';
 import { saveUniqueUserAddress } from '../users/address.service';
+import { sendOrderConfirmationEmail } from '../../lib/orderEmail';
 import type { PaymentMethod, OrderStatus, PaymentStatus } from '@prisma/client';
 
 const uid = (req: Request) => req.user!.id;
@@ -299,6 +300,12 @@ export async function placeOrder(req: Request, res: Response, next: NextFunction
       },
     });
 
+    if (initialStatus === 'CONFIRMED' || isPaymentComplete || paymentMethod === 'COD') {
+      sendOrderConfirmationEmail(updatedOrder.id).catch((mailErr) => {
+        console.warn('⚠️ Non-fatal error sending order confirmation email:', mailErr);
+      });
+    }
+
     res.status(201).json({
       status: 'success',
       message: 'Order placed successfully and connected to Shiprocket Logistics',
@@ -426,6 +433,10 @@ export async function confirmPayment(req: Request, res: Response, next: NextFunc
         payments: true,
         statusHistory: { orderBy: { createdAt: 'desc' } },
       },
+    });
+
+    sendOrderConfirmationEmail(updatedOrder.id).catch((mailErr) => {
+      console.warn('⚠️ Non-fatal error sending order confirmation email on payment confirmation:', mailErr);
     });
 
     res.json({

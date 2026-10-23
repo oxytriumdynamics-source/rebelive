@@ -781,20 +781,61 @@ class ShiprocketService {
    * Fastrr Checkout HMAC verification helper
    * Validates both Base64 and Hex digests for maximum interoperability.
    */
-  verifyFastrrSignature(payloadString: string, signature: string): boolean {
+  verifyFastrrSignature(payload: string | Buffer, signature: string): boolean {
     if (!signature || typeof signature !== 'string') return false;
+    const cleanSig = signature.trim();
     const secret = env.SR_CHECKOUT_API_SECRET || 'rebelive_fastrr_secret_key';
-    const expectedBase64 = crypto.createHmac('sha256', secret).update(payloadString).digest('base64');
-    const expectedHex = crypto.createHmac('sha256', secret).update(payloadString).digest('hex');
 
-    if (signature === expectedBase64 || signature === expectedHex) {
+    // 1. Direct secret token match (if static token was configured in Fastrr webhook header)
+    if (
+      cleanSig === secret ||
+      cleanSig === env.SR_WEBHOOK_TOKEN ||
+      cleanSig === env.SR_CHECKOUT_API_KEY
+    ) {
       return true;
     }
 
+    const rawBuffer = Buffer.isBuffer(payload) ? payload : Buffer.from(String(payload), 'utf8');
+
+    // 2. Base64 digest of raw body
+    const expectedBase64 = crypto.createHmac('sha256', secret).update(rawBuffer).digest('base64');
+    if (cleanSig === expectedBase64) {
+      return true;
+    }
+
+    // 3. Hex digest of raw body
+    const expectedHex = crypto.createHmac('sha256', secret).update(rawBuffer).digest('hex');
+    const normalizedSig = cleanSig.replace(/^sha256=/i, '');
+    if (normalizedSig.toLowerCase() === expectedHex.toLowerCase() || normalizedSig === expectedBase64) {
+      return true;
+    }
+
+    // 4. Also check against JSON string representation if buffer was passed
+    if (Buffer.isBuffer(payload)) {
+      try {
+        const jsonStr = payload.toString('utf8');
+        const jsonHex = crypto.createHmac('sha256', secret).update(jsonStr).digest('hex');
+        const jsonBase64 = crypto.createHmac('sha256', secret).update(jsonStr).digest('base64');
+        if (
+          normalizedSig.toLowerCase() === jsonHex.toLowerCase() ||
+          normalizedSig === jsonBase64 ||
+          cleanSig === jsonBase64
+        ) {
+          return true;
+        }
+      } catch {}
+    }
+
+    // 5. Timing-safe comparison when byte lengths match
     try {
-      const bufSig = Buffer.from(signature);
-      const bufExpected = Buffer.from(expectedBase64);
-      if (bufSig.length === bufExpected.length && crypto.timingSafeEqual(bufSig, bufExpected)) {
+      const bufSig = Buffer.from(cleanSig);
+      const bufExpectedBase64 = Buffer.from(expectedBase64);
+      if (bufSig.length === bufExpectedBase64.length && crypto.timingSafeEqual(bufSig, bufExpectedBase64)) {
+        return true;
+      }
+      const bufNorm = Buffer.from(normalizedSig.toLowerCase());
+      const bufExpectedHex = Buffer.from(expectedHex.toLowerCase());
+      if (bufNorm.length === bufExpectedHex.length && crypto.timingSafeEqual(bufNorm, bufExpectedHex)) {
         return true;
       }
     } catch {}
