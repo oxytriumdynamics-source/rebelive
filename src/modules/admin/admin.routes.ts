@@ -1,7 +1,13 @@
 import { Router } from 'express';
 import multer from 'multer';
 import * as adminController from './admin.controller';
-import { authenticate, requireAdmin, requireSuperAdmin } from '../auth/auth.middleware';
+import {
+  authenticate,
+  requireStaff,
+  requireAdmin,
+  requireSuperAdmin,
+  requireModule,
+} from '../auth/auth.middleware';
 import { authLimiter } from '../../shared/middleware/rateLimiter';
 
 const router = Router();
@@ -26,86 +32,89 @@ const upload = multer({
 router.post('/login-request', authLimiter, adminController.adminLoginRequest);
 router.post('/login-verify-otp', authLimiter, adminController.adminVerifyOtp);
 
-// ─── Protected Routes (Requires Auth + ADMIN / SUPERADMIN Role) ────
-router.use(authenticate, requireAdmin);
+// ─── Protected Routes (Requires Auth + STAFF Role: TEAM, ADMIN, SUPERADMIN) ───
+router.use(authenticate, requireStaff);
 
 // ─── Admin Profile & Password Management (SUPERADMIN Only) ────
 router.patch('/change-password', requireSuperAdmin, adminController.changeAdminPassword);
 
-// ─── Dashboard ────────────────────────────────────────
+// ─── Dashboard (Accessible to all Staff) ──────────────────
 router.get('/dashboard', adminController.getDashboard);
 
-// ─── User Management & Super Admin Restrictions ────────
+// ─── Staff & User Management (SUPERADMIN Exclusive for control, ADMIN for view) ────────
 router.get('/admins', requireSuperAdmin, adminController.getAdminsList);
-router.get('/users', adminController.getUsers);
-router.get('/users/:id', adminController.getUser);
+router.post('/staff', requireSuperAdmin, adminController.createStaffAccount);
+router.patch('/staff/:id', requireSuperAdmin, adminController.updateStaffAccount);
+router.get('/users', requireAdmin, adminController.getUsers);
+router.get('/users/:id', requireAdmin, adminController.getUser);
 router.patch('/users/:id', requireSuperAdmin, adminController.updateUser);
 router.patch('/users/:id/restrict', requireSuperAdmin, adminController.restrictUser);
+router.delete('/users/:id', requireSuperAdmin, adminController.deleteUserPermanent);
 
-// ─── Product Management (Deletions restricted to Super Admin)
-router.get('/products', adminController.getProducts);
-router.get('/products/:id', adminController.getProduct);
-router.post('/products', adminController.createProduct);
-router.patch('/products/:id', adminController.updateProduct);
+// ─── Product Management (requiresModule('products')) ────
+router.get('/products', requireModule('products'), adminController.getProducts);
+router.get('/products/:id', requireModule('products'), adminController.getProduct);
+router.post('/products', requireModule('products'), adminController.createProduct);
+router.patch('/products/:id', requireModule('products'), adminController.updateProduct);
 router.delete('/products/:id', requireSuperAdmin, adminController.deleteProduct);
-router.post('/upload-image', upload.single('image'), adminController.uploadProductImage);
+router.post('/upload-image', requireModule('products'), upload.single('image'), adminController.uploadProductImage);
 
-// ─── Category Management ──────────────────────────────
-router.post('/categories', adminController.createCategory);
+// ─── Category Management (requiresModule('products')) ───
+router.post('/categories', requireModule('products'), adminController.createCategory);
 
-// ─── Order Management & Shiprocket Dispatch ───────────
-router.get('/orders', adminController.getOrders);
-router.post('/orders/sync-shiprocket', adminController.syncAllOrdersToShiprocket);
-router.get('/orders/:id', adminController.getOrder);
-router.patch('/orders/:id/status', adminController.updateOrderStatus);
-router.post('/orders/:id/dispatch-shiprocket', adminController.dispatchOrderToShiprocket);
-router.get('/orders/:id/track-shiprocket', adminController.trackOrderShiprocket);
+// ─── Order Management & Shiprocket Dispatch (requiresModule('orders')) ────
+router.get('/orders', requireModule('orders'), adminController.getOrders);
+router.post('/orders/sync-shiprocket', requireModule('orders'), adminController.syncAllOrdersToShiprocket);
+router.get('/orders/:id', requireModule('orders'), adminController.getOrder);
+router.patch('/orders/:id/status', requireModule('orders'), adminController.updateOrderStatus);
+router.post('/orders/:id/dispatch-shiprocket', requireModule('orders'), adminController.dispatchOrderToShiprocket);
+router.get('/orders/:id/track-shiprocket', requireModule('orders'), adminController.trackOrderShiprocket);
+router.delete('/orders/:id', requireSuperAdmin, adminController.deleteOrderPermanent);
 
-// ─── Inventory ────────────────────────────────────────
-router.patch('/inventory/:variantId', adminController.updateStock);
+// ─── Inventory (requiresModule('products')) ─────────────
+router.patch('/inventory/:variantId', requireModule('products'), adminController.updateStock);
 
 // ─── Support Tickets ──────────────────────────────────
-router.get('/tickets', adminController.getTickets);
-router.post('/tickets/:id/reply', adminController.replyToTicket);
+router.get('/tickets', requireModule('orders'), adminController.getTickets);
+router.post('/tickets/:id/reply', requireModule('orders'), adminController.replyToTicket);
 
-// ─── Coupons ──────────────────────────────────────────
-router.get('/coupons', adminController.getCoupons);
-router.post('/coupons', adminController.createCoupon);
-router.patch('/coupons/:id', adminController.updateCoupon);
+// ─── Coupons (requiresModule('products')) ───────────────
+router.get('/coupons', requireModule('products'), adminController.getCoupons);
+router.post('/coupons', requireModule('products'), adminController.createCoupon);
+router.patch('/coupons/:id', requireModule('products'), adminController.updateCoupon);
 
 // ─── Newsletter ───────────────────────────────────────
-router.get('/newsletter', adminController.getNewsletterSubscribers);
+router.get('/newsletter', requireAdmin, adminController.getNewsletterSubscribers);
 
-// ─── Audit Logs ───────────────────────────────────────
+// ─── Audit Logs (SUPERADMIN Exclusive) ────────────────
 router.get('/audit-logs', requireSuperAdmin, adminController.getAuditLogs);
 
 // ─── Quiz & Personality Types ─────────────────────────
-router.post('/personality-types', adminController.createPersonalityType);
-router.post('/quiz/questions', adminController.createQuizQuestion);
+router.post('/personality-types', requireModule('products'), adminController.createPersonalityType);
+router.post('/quiz/questions', requireModule('products'), adminController.createQuizQuestion);
 
-// ─── Testimonials Management ──────────────────────────
-router.get('/testimonials', adminController.getTestimonials);
-router.get('/testimonials/:id', adminController.getTestimonial);
-router.post('/testimonials', adminController.createTestimonial);
-router.patch('/testimonials/:id', adminController.updateTestimonial);
+// ─── Testimonials Management (requiresModule('testimonials')) ──────────
+router.get('/testimonials', requireModule('testimonials'), adminController.getTestimonials);
+router.get('/testimonials/:id', requireModule('testimonials'), adminController.getTestimonial);
+router.post('/testimonials', requireModule('testimonials'), adminController.createTestimonial);
+router.patch('/testimonials/:id', requireModule('testimonials'), adminController.updateTestimonial);
 router.delete('/testimonials/:id', requireSuperAdmin, adminController.deleteTestimonial);
 
-// ─── Contact Queries (User Queries) ────────────────────
-router.get('/contact-queries', adminController.getContactQueries);
-router.patch('/contact-queries/:id/status', adminController.updateContactQueryStatus);
+// ─── Contact Queries (requiresModule('contact-queries')) ────
+router.get('/contact-queries', requireModule('contact-queries'), adminController.getContactQueries);
+router.patch('/contact-queries/:id/status', requireModule('contact-queries'), adminController.updateContactQueryStatus);
 router.delete('/contact-queries/:id', requireSuperAdmin, adminController.deleteContactQuery);
 
-// ─── Corporate Queries ────────────────────────────────
-router.get('/corporate-queries', adminController.getCorporateQueries);
-router.patch('/corporate-queries/:id/status', adminController.updateCorporateQueryStatus);
+// ─── Corporate Queries (requiresModule('corporate-queries')) ───────────
+router.get('/corporate-queries', requireModule('corporate-queries'), adminController.getCorporateQueries);
+router.patch('/corporate-queries/:id/status', requireModule('corporate-queries'), adminController.updateCorporateQueryStatus);
 router.delete('/corporate-queries/:id', requireSuperAdmin, adminController.deleteCorporateQuery);
 
-// ─── Blog Posts & Articles Management ─────────────────
-router.get('/blogs', adminController.getBlogs);
-router.get('/blogs/:id', adminController.getBlog);
-router.post('/blogs', adminController.createBlog);
-router.patch('/blogs/:id', adminController.updateBlog);
-router.delete('/blogs/:id', adminController.deleteBlog);
+// ─── Blog Posts & Articles Management (requiresModule('blogs')) ────────
+router.get('/blogs', requireModule('blogs'), adminController.getBlogs);
+router.get('/blogs/:id', requireModule('blogs'), adminController.getBlog);
+router.post('/blogs', requireModule('blogs'), adminController.createBlog);
+router.patch('/blogs/:id', requireModule('blogs'), adminController.updateBlog);
+router.delete('/blogs/:id', requireSuperAdmin, adminController.deleteBlog);
 
 export default router;
-

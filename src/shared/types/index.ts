@@ -10,6 +10,7 @@ export interface AuthUser {
   emailVerified: boolean;
   phone?: string | null;
   isRestricted?: boolean;
+  assignedModules?: string[];
 }
 
 // Augment Express namespace

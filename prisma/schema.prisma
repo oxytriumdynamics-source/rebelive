@@ -13,6 +13,7 @@ datasource db {
 
 enum UserRole {
   CUSTOMER
+  TEAM
   ADMIN
   SUPERADMIN
 }
@@ -90,6 +91,7 @@ model User {
   phone         String?
   avatarUrl     String?   @map("avatar_url")
   role          UserRole  @default(CUSTOMER)
+  assignedModules String[] @default([]) @map("assigned_modules")
   emailVerified Boolean   @default(false) @map("email_verified")
   isRestricted  Boolean   @default(false) @map("is_restricted")
   googleId      String?   @unique @map("google_id")   // Google OAuth ID
@@ -713,19 +715,26 @@ model InventoryLog {
 }
 
 model AuditLog {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId    String?  @map("user_id") @db.ObjectId
-  action    String
-  entity    String
-  entityId  String?  @map("entity_id") @db.ObjectId
-  oldData   Json?    @map("old_data")
-  newData   Json?    @map("new_data")
-  ipAddress String?  @map("ip_address")
-  userAgent String?  @map("user_agent")
-  createdAt DateTime @default(now()) @map("created_at")
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId     String?  @map("user_id") @db.ObjectId
+  actorEmail String?  @map("actor_email")
+  actorName  String?  @map("actor_name")
+  actorRole  String?  @map("actor_role")
+  action     String
+  entity     String
+  entityId   String?  @map("entity_id")
+  details    Json?
+  oldData    Json?    @map("old_data")
+  newData    Json?    @map("new_data")
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent")
+  createdAt  DateTime @default(now()) @map("created_at")
 
   user User? @relation(fields: [userId], references: [id])
 
+  @@index([createdAt])
+  @@index([userId])
+  @@index([action])
   @@map("audit_logs")
 }
 

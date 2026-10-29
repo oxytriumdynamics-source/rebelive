@@ -10,7 +10,7 @@ import { env } from './env';
 import { logger } from '../shared/utils/logger';
 import { sendMail } from '../lib/mailer';
 import { greetingEmailHtml } from '../lib/emailTemplates';
-import { mergePastGuestOrdersByPhone } from '../modules/users/users.controller';
+import { mergePastGuestOrders } from '../modules/users/users.controller';
 
 // ─── JWT Strategy ──────────────────────────────────────
 // Extracts JWT from Authorization header OR HttpOnly cookie
@@ -42,6 +42,7 @@ passport.use(
           lastName: true,
           emailVerified: true,
           isRestricted: true,
+          assignedModules: true,
         },
       });
 
@@ -115,11 +116,10 @@ passport.use(
           logger.info(`[Auth] Linked Google to existing user: ${email}`);
         }
 
-        if (user.phone) {
-          mergePastGuestOrdersByPhone(user.id, user.phone).catch((e) =>
-            logger.warn('Non-fatal mergePastGuestOrdersByPhone on Google login:', e)
-          );
-        }
+        // Automatically link any past guest orders matching user's phone or email
+        mergePastGuestOrders(user.id, { phone: user.phone, email: user.email }).catch((e) =>
+          logger.warn('Non-fatal mergePastGuestOrders on Google login:', e)
+        );
 
         return done(null, user);
       } catch (err) {

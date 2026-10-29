@@ -6,7 +6,8 @@ import { getPagination, buildPaginationResult } from '../../shared/types';
 import { shiprocketService } from '../shipping/shiprocket.service';
 import { buildShiprocketAddress } from '../shipping/shipping.controller';
 import { saveUniqueUserAddress } from '../users/address.service';
-import { sendOrderConfirmationEmail } from '../../lib/orderEmail';
+import { mergePastGuestOrders } from '../users/users.controller';
+import { sendOrderConfirmationEmail, isAuthenticEmail } from '../../lib/orderEmail';
 import type { PaymentMethod, OrderStatus, PaymentStatus } from '@prisma/client';
 
 const uid = (req: Request) => req.user!.id;
@@ -17,34 +18,26 @@ export async function getOrders(req: Request, res: Response, next: NextFunction)
     const { skip, take, page, limit } = getPagination(req.query as Record<string, unknown>);
     const currentUserId = uid(req);
 
-    // Retrieve user phone to link any guest orders placed via Fastrr
+    // Retrieve user phone and email to link any guest orders placed via Fastrr
     const user = await prisma.user.findUnique({
       where: { id: currentUserId },
-      select: { phone: true },
+      select: { phone: true, email: true },
     });
     const cleanPhone = user?.phone ? user.phone.replace(/\D/g, '').slice(-10) : '';
+    const userEmail = user?.email && isAuthenticEmail(user.email) ? user.email.trim().toLowerCase() : '';
 
-    const where: any = cleanPhone && cleanPhone.length >= 10
-      ? {
-          OR: [
-            { userId: currentUserId },
-            { notes: { contains: cleanPhone } },
-          ],
-        }
-      : { userId: currentUserId };
-
-    // Auto-heal in background: reassign any unlinked guest orders matching this phone
-    if (cleanPhone && cleanPhone.length >= 10) {
-      prisma.order
-        .updateMany({
-          where: {
-            userId: { not: currentUserId },
-            notes: { contains: cleanPhone },
-          },
-          data: { userId: currentUserId },
-        })
-        .catch(() => {});
+    // Proactively merge/link past guest orders by phone and email into current account
+    if ((cleanPhone && cleanPhone.length >= 10) || userEmail) {
+      await mergePastGuestOrders(currentUserId, { phone: cleanPhone, email: userEmail }).catch(() => {});
     }
+
+    const where: any = {
+      OR: [
+        { userId: currentUserId },
+        ...(cleanPhone && cleanPhone.length >= 10 ? [{ notes: { contains: cleanPhone } }] : []),
+        ...(userEmail ? [{ notes: { contains: userEmail } }] : []),
+      ],
+    };
 
     const [data, total] = await Promise.all([
       prisma.order.findMany({
@@ -69,9 +62,14 @@ export async function getOrder(req: Request, res: Response, next: NextFunction):
     const currentUserId = uid(req);
     const user = await prisma.user.findUnique({
       where: { id: currentUserId },
-      select: { phone: true },
+      select: { phone: true, email: true },
     });
     const cleanPhone = user?.phone ? user.phone.replace(/\D/g, '').slice(-10) : '';
+    const userEmail = user?.email && isAuthenticEmail(user.email) ? user.email.trim().toLowerCase() : '';
+
+    if ((cleanPhone && cleanPhone.length >= 10) || userEmail) {
+      await mergePastGuestOrders(currentUserId, { phone: cleanPhone, email: userEmail }).catch(() => {});
+    }
 
     const order = await prisma.order.findFirst({
       where: {
@@ -79,6 +77,7 @@ export async function getOrder(req: Request, res: Response, next: NextFunction):
         OR: [
           { userId: currentUserId },
           ...(cleanPhone && cleanPhone.length >= 10 ? [{ notes: { contains: cleanPhone } }] : []),
+          ...(userEmail ? [{ notes: { contains: userEmail } }] : []),
         ],
       },
       include: {

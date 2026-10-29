@@ -14,6 +14,7 @@ import { uploadToCloudinary } from '../../lib/cloudinary';
 import { logger } from '../../shared/utils/logger';
 import type { UserRole, OrderStatus } from '@prisma/client';
 import { productsCache } from '../products/products.cache';
+import { recordActivityLog } from './activityLog.service';
 
 const qStr = (req: Request, key: string): string | undefined => {
   const v = req.query[key];
@@ -51,9 +52,13 @@ export async function adminLoginRequest(req: Request, res: Response, next: NextF
       throw new UnauthorizedError('Invalid credentials');
     }
 
-    // Ensure the user has ADMIN or SUPERADMIN privileges
-    if (user.role !== 'ADMIN' && user.role !== 'SUPERADMIN') {
-      throw new ForbiddenError('Access restricted to administrators only');
+    // Ensure user has STAFF privileges (TEAM, ADMIN, or SUPERADMIN)
+    if (user.role !== 'TEAM' && user.role !== 'ADMIN' && user.role !== 'SUPERADMIN') {
+      throw new ForbiddenError('Access restricted to authorized personnel only');
+    }
+
+    if (user.isRestricted) {
+      throw new ForbiddenError('This staff account has been deactivated. Please contact Super Admin.');
     }
 
     // Generate 6-digit numeric OTP
@@ -111,8 +116,12 @@ export async function adminVerifyOtp(req: Request, res: Response, next: NextFunc
       throw new NotFoundError('Administrator account not found');
     }
 
-    if (user.role !== 'ADMIN' && user.role !== 'SUPERADMIN') {
-      throw new ForbiddenError('Access restricted to administrators only');
+    if (user.role !== 'TEAM' && user.role !== 'ADMIN' && user.role !== 'SUPERADMIN') {
+      throw new ForbiddenError('Access restricted to authorized personnel only');
+    }
+
+    if (user.isRestricted) {
+      throw new ForbiddenError('This staff account has been deactivated. Please contact Super Admin.');
     }
 
     if (!user.otpCode || !user.otpExpiry) {
@@ -151,13 +160,25 @@ export async function adminVerifyOtp(req: Request, res: Response, next: NextFunc
       },
     });
 
+    recordActivityLog({
+      actor: user,
+      req,
+      action: 'STAFF_LOGIN',
+      entity: 'Session',
+      entityId: user.id,
+      details: { email: user.email, role: user.role },
+    });
+
     const { passwordHash, refreshTokens: _r, googleId, otpCode, ...safeUser } = user;
 
     res.status(200).json({
       status: 'success',
-      message: 'Admin authorization granted',
+      message: 'Staff authorization granted',
       data: {
-        user: safeUser,
+        user: {
+          ...safeUser,
+          assignedModules: user.assignedModules ?? [],
+        },
         accessToken,
         refreshToken,
       },
@@ -219,6 +240,14 @@ export async function changeAdminPassword(req: Request, res: Response, next: Nex
     });
 
     logger.info(`[ADMIN SECURITY] Password successfully updated for admin: ${user.email}`);
+
+    recordActivityLog({
+      req,
+      action: 'CHANGE_ADMIN_PASSWORD',
+      entity: 'User',
+      entityId: user.id,
+      details: { email: user.email },
+    });
 
     res.status(200).json({
       status: 'success',
@@ -388,13 +417,14 @@ export async function getUser(req: Request, res: Response, next: NextFunction): 
 export async function updateUser(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const targetUserId = paramStr(req);
-    const { role, emailVerified, firstName, lastName, phone, isRestricted } = req.body as {
+    const { role, emailVerified, firstName, lastName, phone, isRestricted, assignedModules } = req.body as {
       role?: UserRole;
       emailVerified?: boolean;
       firstName?: string;
       lastName?: string;
       phone?: string;
       isRestricted?: boolean;
+      assignedModules?: string[];
     };
 
     const targetUser = await prisma.user.findUnique({
@@ -434,11 +464,26 @@ export async function updateUser(req: Request, res: Response, next: NextFunction
         ...(role !== undefined ? { role } : {}),
         ...(emailVerified !== undefined ? { emailVerified } : {}),
         ...(isRestricted !== undefined ? { isRestricted } : {}),
+        ...(assignedModules !== undefined ? { assignedModules } : {}),
         firstName: firstName ?? undefined,
         lastName: lastName ?? undefined,
         phone: phone ?? undefined,
       },
     });
+
+    recordActivityLog({
+      req,
+      action: 'UPDATE_USER_ACCOUNT',
+      entity: 'User',
+      entityId: targetUserId,
+      details: {
+        targetEmail: targetUser.email,
+        updatedRole: role,
+        assignedModules,
+        isRestricted,
+      },
+    });
+
     const { passwordHash, refreshTokens, googleId, otpCode, ...safe } = user;
     res.json({ status: 'success', data: safe });
   } catch (err) {
@@ -446,12 +491,12 @@ export async function updateUser(req: Request, res: Response, next: NextFunction
   }
 }
 
-// GET /api/v1/admin/admins
+// GET /api/v1/admin/admins (SUPERADMIN Only)
 export async function getAdminsList(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const admins = await prisma.user.findMany({
       where: {
-        role: { in: ['ADMIN', 'SUPERADMIN'] },
+        role: { in: ['TEAM', 'ADMIN', 'SUPERADMIN'] },
       },
       orderBy: { createdAt: 'desc' },
       select: {
@@ -460,6 +505,7 @@ export async function getAdminsList(req: Request, res: Response, next: NextFunct
         firstName: true,
         lastName: true,
         role: true,
+        assignedModules: true,
         emailVerified: true,
         isRestricted: true,
         createdAt: true,
@@ -468,6 +514,146 @@ export async function getAdminsList(req: Request, res: Response, next: NextFunct
       },
     });
     res.json({ status: 'success', data: admins });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /api/v1/admin/staff (SUPERADMIN Only)
+export async function createStaffAccount(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { email, password, firstName, lastName, phone, role, assignedModules } = req.body as {
+      email?: string;
+      password?: string;
+      firstName?: string;
+      lastName?: string;
+      phone?: string;
+      role?: 'ADMIN' | 'TEAM';
+      assignedModules?: string[];
+    };
+
+    if (!email || !password || !firstName) {
+      throw new ValidationError('Email, password, and first name are required');
+    }
+
+    if (!role || !['ADMIN', 'TEAM'].includes(role)) {
+      throw new ValidationError('Role must be either ADMIN or TEAM');
+    }
+
+    if (password.length < 8) {
+      throw new ValidationError('Password must be at least 8 characters long');
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const existing = await prisma.user.findUnique({ where: { email: cleanEmail } });
+    if (existing) {
+      throw new ValidationError(`An account with email ${cleanEmail} already exists`);
+    }
+
+    const passwordHash = await hashPassword(password);
+    const validAssignedModules = Array.isArray(assignedModules) ? assignedModules : [];
+
+    const newStaff = await prisma.user.create({
+      data: {
+        email: cleanEmail,
+        passwordHash,
+        firstName: firstName.trim(),
+        lastName: lastName ? lastName.trim() : '',
+        phone: phone ? phone.trim() : null,
+        role,
+        assignedModules: role === 'TEAM' ? validAssignedModules : [],
+        emailVerified: true,
+        isRestricted: false,
+      },
+    });
+
+    recordActivityLog({
+      req,
+      action: 'CREATE_STAFF_ACCOUNT',
+      entity: 'User',
+      entityId: newStaff.id,
+      details: {
+        email: newStaff.email,
+        role: newStaff.role,
+        assignedModules: newStaff.assignedModules,
+      },
+    });
+
+    const { passwordHash: _p, refreshTokens, googleId, otpCode, ...safe } = newStaff;
+    res.status(201).json({
+      status: 'success',
+      message: `${role === 'ADMIN' ? 'Administrator' : 'Team Member'} account created successfully`,
+      data: safe,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// PATCH /api/v1/admin/staff/:id (SUPERADMIN Only)
+export async function updateStaffAccount(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const targetUserId = paramStr(req);
+    const { firstName, lastName, phone, role, assignedModules, password, isRestricted } = req.body as {
+      firstName?: string;
+      lastName?: string;
+      phone?: string;
+      role?: 'ADMIN' | 'TEAM';
+      assignedModules?: string[];
+      password?: string;
+      isRestricted?: boolean;
+    };
+
+    const targetUser = await prisma.user.findUnique({
+      where: { id: targetUserId },
+    });
+
+    if (!targetUser) {
+      throw new NotFoundError('Staff account not found');
+    }
+
+    if (targetUser.email === 'oxytriumdynamics@gmail.com') {
+      throw new ForbiddenError('The master Super Admin account cannot be altered via staff endpoint');
+    }
+
+    let passwordHash: string | undefined = undefined;
+    if (password) {
+      if (password.length < 8) {
+        throw new ValidationError('New password must be at least 8 characters long');
+      }
+      passwordHash = await hashPassword(password);
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: targetUserId },
+      data: {
+        ...(firstName !== undefined ? { firstName: firstName.trim() } : {}),
+        ...(lastName !== undefined ? { lastName: lastName.trim() } : {}),
+        ...(phone !== undefined ? { phone: phone.trim() } : {}),
+        ...(role !== undefined ? { role } : {}),
+        ...(assignedModules !== undefined ? { assignedModules } : {}),
+        ...(passwordHash ? { passwordHash, otpCode: null, otpExpiry: null } : {}),
+        ...(isRestricted !== undefined ? { isRestricted } : {}),
+      },
+    });
+
+    recordActivityLog({
+      req,
+      action: 'UPDATE_STAFF_ACCOUNT',
+      entity: 'User',
+      entityId: targetUserId,
+      details: {
+        targetEmail: targetUser.email,
+        updatedFields: { firstName, lastName, phone, role, assignedModules, isRestricted, passwordChanged: !!password },
+      },
+    });
+
+    const { passwordHash: _p, refreshTokens, googleId, otpCode, ...safe } = updated;
+    res.json({
+      status: 'success',
+      message: 'Staff account updated successfully',
+      data: safe,
+    });
   } catch (err) {
     next(err);
   }
@@ -504,11 +690,119 @@ export async function restrictUser(req: Request, res: Response, next: NextFuncti
 
     logger.info(`[ADMIN RESTRICTION] User ${user.email} restricted status set to ${newRestrictedState} by ${req.user?.email}`);
 
+    recordActivityLog({
+      req,
+      action: newRestrictedState ? 'DEACTIVATE_USER' : 'ACTIVATE_USER',
+      entity: 'User',
+      entityId: targetUserId,
+      details: { targetEmail: targetUser.email, newRestrictedState },
+    });
+
     const { passwordHash, refreshTokens, googleId, otpCode, ...safe } = user;
     res.json({
       status: 'success',
-      message: newRestrictedState ? `User ${user.email} has been restricted` : `User ${user.email} restriction removed`,
+      message: newRestrictedState ? `User ${user.email} has been deactivated` : `User ${user.email} reactivated`,
       data: safe,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// DELETE /api/v1/admin/users/:id (SUPERADMIN Only)
+// Completely removes a user account and purges associated relational records from DB
+export async function deleteUserPermanent(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = paramStr(req);
+
+    if (req.user?.role !== 'SUPERADMIN') {
+      throw new ForbiddenError('Only Super Admin has authority to permanently delete user accounts');
+    }
+
+    const targetUser = await prisma.user.findUnique({
+      where: { id },
+    });
+
+    if (!targetUser) {
+      throw new NotFoundError('User not found');
+    }
+
+    if (targetUser.email === 'oxytriumdynamics@gmail.com') {
+      throw new ForbiddenError('The master Super Admin account cannot be deleted');
+    }
+
+    if (targetUser.id === req.user?.id) {
+      throw new ForbiddenError('You cannot delete your own active Super Admin account');
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // 1. Delete user addresses
+      await tx.address.deleteMany({ where: { userId: id } });
+
+      // 2. Delete user preferences
+      await tx.userPreference.deleteMany({ where: { userId: id } });
+
+      // 3. Delete user cart & cartItems
+      const cart = await tx.cart.findUnique({ where: { userId: id } });
+      if (cart) {
+        await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
+        await tx.cart.delete({ where: { id: cart.id } });
+      }
+
+      // 4. Delete user wishlist & wishlistItems
+      const wishlist = await tx.wishlist.findUnique({ where: { userId: id } });
+      if (wishlist) {
+        await tx.wishlistItem.deleteMany({ where: { wishlistId: wishlist.id } });
+        await tx.wishlist.delete({ where: { id: wishlist.id } });
+      }
+
+      // 5. Delete reviews
+      await tx.review.deleteMany({ where: { userId: id } });
+
+      // 6. Delete notifications
+      await tx.notification.deleteMany({ where: { userId: id } });
+
+      // 7. Delete subscriptions
+      await tx.subscription.deleteMany({ where: { userId: id } });
+
+      // 8. Delete quiz results
+      await tx.quizResult.deleteMany({ where: { userId: id } });
+
+      // 9. Tickets & ticket messages
+      const tickets = await tx.ticket.findMany({ where: { userId: id } });
+      for (const t of tickets) {
+        await tx.ticketMessage.deleteMany({ where: { ticketId: t.id } });
+      }
+      await tx.ticket.deleteMany({ where: { userId: id } });
+
+      // 10. Orders: delete user's orders and their items/payments/statusHistory
+      const orders = await tx.order.findMany({ where: { userId: id } });
+      for (const ord of orders) {
+        await tx.orderItem.deleteMany({ where: { orderId: ord.id } });
+        await tx.orderStatusHistory.deleteMany({ where: { orderId: ord.id } });
+        await tx.payment.deleteMany({ where: { orderId: ord.id } });
+        await tx.order.delete({ where: { id: ord.id } });
+      }
+
+      // 11. Finally delete the user account
+      await tx.user.delete({ where: { id } });
+    });
+
+    recordActivityLog({
+      req,
+      action: 'DELETE_USER_PERMANENT',
+      entity: 'User',
+      entityId: id,
+      details: {
+        email: targetUser.email,
+        name: `${targetUser.firstName} ${targetUser.lastName}`.trim(),
+        role: targetUser.role,
+      },
+    });
+
+    res.json({
+      status: 'success',
+      message: `User ${targetUser.email} and all associated records permanently purged from database`,
     });
   } catch (err) {
     next(err);
@@ -698,6 +992,15 @@ export async function createProduct(req: Request, res: Response, next: NextFunct
     });
 
     productsCache.clear();
+
+    recordActivityLog({
+      req,
+      action: 'CREATE_PRODUCT',
+      entity: 'Product',
+      entityId: product.id,
+      details: { name: product.name, slug: product.slug },
+    });
+
     res.status(201).json({ status: 'success', data: fullProduct });
   } catch (err) {
     next(err);
@@ -828,6 +1131,15 @@ export async function updateProduct(req: Request, res: Response, next: NextFunct
     });
 
     productsCache.clear();
+
+    recordActivityLog({
+      req,
+      action: 'UPDATE_PRODUCT',
+      entity: 'Product',
+      entityId: targetId,
+      details: { name: updated.name, slug: updated.slug },
+    });
+
     res.json({ status: 'success', data: fullProduct });
   } catch (err) {
     next(err);
@@ -853,6 +1165,15 @@ export async function deleteProduct(req: Request, res: Response, next: NextFunct
       data: { isActive: false },
     });
     productsCache.clear();
+
+    recordActivityLog({
+      req,
+      action: 'DELETE_PRODUCT',
+      entity: 'Product',
+      entityId: existingProduct.id,
+      details: { name: existingProduct.name, slug: existingProduct.slug },
+    });
+
     res.json({ status: 'success', message: 'Product archived / deactivated successfully' });
   } catch (err) {
     next(err);
@@ -1008,6 +1329,14 @@ export async function updateOrderStatus(req: Request, res: Response, next: NextF
       },
     });
 
+    recordActivityLog({
+      req,
+      action: 'UPDATE_ORDER_STATUS',
+      entity: 'Order',
+      entityId: order.id,
+      details: { orderNumber: order.orderNumber, status, note, trackingNumber },
+    });
+
     res.json({ status: 'success', data: order });
   } catch (err) {
     next(err);
@@ -1092,6 +1421,18 @@ export async function dispatchOrderToShiprocket(req: Request, res: Response, nex
         user: true,
         items: true,
         statusHistory: { orderBy: { createdAt: 'desc' } },
+      },
+    });
+
+    recordActivityLog({
+      req,
+      action: 'DISPATCH_SHIPROCKET',
+      entity: 'Order',
+      entityId: order.id,
+      details: {
+        orderNumber: order.orderNumber,
+        awbCode: shiprocketResult.awbCode,
+        courierName: shiprocketResult.courierName,
       },
     });
 
@@ -1242,6 +1583,53 @@ export async function trackOrderShiprocket(req: Request, res: Response, next: Ne
   }
 }
 
+// DELETE /api/v1/admin/orders/:id (SUPERADMIN Only)
+// Completely removes an order and purges associated order items, payments, and history
+export async function deleteOrderPermanent(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = paramStr(req);
+
+    if (req.user?.role !== 'SUPERADMIN') {
+      throw new ForbiddenError('Only Super Admin has authority to permanently delete orders');
+    }
+
+    const order = await prisma.order.findUnique({
+      where: { id },
+      include: { user: { select: { email: true, firstName: true, lastName: true } } },
+    });
+
+    if (!order) {
+      throw new NotFoundError('Order not found');
+    }
+
+    await prisma.$transaction([
+      prisma.orderItem.deleteMany({ where: { orderId: id } }),
+      prisma.orderStatusHistory.deleteMany({ where: { orderId: id } }),
+      prisma.payment.deleteMany({ where: { orderId: id } }),
+      prisma.order.delete({ where: { id } }),
+    ]);
+
+    recordActivityLog({
+      req,
+      action: 'DELETE_ORDER_PERMANENT',
+      entity: 'Order',
+      entityId: id,
+      details: {
+        orderNumber: order.orderNumber,
+        total: order.total,
+        customerEmail: order.user?.email,
+      },
+    });
+
+    res.json({
+      status: 'success',
+      message: `Order #${order.orderNumber} permanently purged from database`,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 // ─── INVENTORY & STOCK ─────────────────────────────────
 
 // PATCH /api/v1/admin/inventory/:variantId
@@ -1271,6 +1659,21 @@ export async function updateStock(req: Request, res: Response, next: NextFunctio
     ]);
 
     productsCache.clear();
+
+    recordActivityLog({
+      req,
+      action: 'UPDATE_INVENTORY_STOCK',
+      entity: 'ProductVariant',
+      entityId: variant.id,
+      details: {
+        sku: variant.sku,
+        name: variant.name,
+        changeQty,
+        reason,
+        newStock: updatedVariant.stockQty,
+      },
+    });
+
     res.json({ status: 'success', data: updatedVariant });
   } catch (err) {
     next(err);
@@ -1382,18 +1785,40 @@ export async function getNewsletterSubscribers(req: Request, res: Response, next
   }
 }
 
-// GET /api/v1/admin/audit-logs
+// GET /api/v1/admin/audit-logs (SUPERADMIN Only)
 export async function getAuditLogs(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const { skip, take, page, limit } = getPagination(req.query as Record<string, unknown>);
+    const search = qStr(req, 'search');
+    const roleFilter = qStr(req, 'role');
+    const entityFilter = qStr(req, 'entity');
+
+    const where: any = {};
+    if (roleFilter && roleFilter !== 'ALL') {
+      where.actorRole = roleFilter;
+    }
+    if (entityFilter && entityFilter !== 'ALL') {
+      where.entity = entityFilter;
+    }
+    if (search && search.trim()) {
+      const q = search.trim();
+      where.OR = [
+        { actorEmail: { contains: q, mode: 'insensitive' } },
+        { actorName: { contains: q, mode: 'insensitive' } },
+        { action: { contains: q, mode: 'insensitive' } },
+        { entity: { contains: q, mode: 'insensitive' } },
+      ];
+    }
+
     const [data, total] = await Promise.all([
       prisma.auditLog.findMany({
+        where,
         orderBy: { createdAt: 'desc' },
         skip,
         take,
-        include: { user: { select: { email: true, firstName: true, lastName: true } } },
+        include: { user: { select: { email: true, firstName: true, lastName: true, role: true } } },
       }),
-      prisma.auditLog.count(),
+      prisma.auditLog.count({ where }),
     ]);
     res.json({ status: 'success', ...buildPaginationResult(data, total, page, limit) });
   } catch (err) {
@@ -1637,6 +2062,14 @@ export async function updateContactQueryStatus(req: Request, res: Response, next
       data,
     });
 
+    recordActivityLog({
+      req,
+      action: 'UPDATE_CONTACT_QUERY',
+      entity: 'ContactQuery',
+      entityId: id,
+      details: { status: updated.status, email: updated.email },
+    });
+
     res.json({ status: 'success', data: updated });
   } catch (err) {
     next(err);
@@ -1648,6 +2081,15 @@ export async function deleteContactQuery(req: Request, res: Response, next: Next
   try {
     const id = paramStr(req);
     await prisma.contactQuery.delete({ where: { id } });
+
+    recordActivityLog({
+      req,
+      action: 'DELETE_CONTACT_QUERY',
+      entity: 'ContactQuery',
+      entityId: id,
+      details: { queryId: id },
+    });
+
     res.json({ status: 'success', message: 'Contact query deleted successfully' });
   } catch (err) {
     next(err);
@@ -1710,6 +2152,14 @@ export async function updateCorporateQueryStatus(req: Request, res: Response, ne
     const updated = await prisma.corporateQuery.update({
       where: { id },
       data,
+    });
+
+    recordActivityLog({
+      req,
+      action: 'UPDATE_CORPORATE_QUERY',
+      entity: 'CorporateQuery',
+      entityId: id,
+      details: { status: updated.status, companyName: updated.companyName },
     });
 
     res.json({ status: 'success', data: updated });
@@ -1858,6 +2308,14 @@ export async function createBlog(req: Request, res: Response, next: NextFunction
       },
     });
 
+    recordActivityLog({
+      req,
+      action: 'CREATE_BLOG',
+      entity: 'BlogPost',
+      entityId: blog.id,
+      details: { title: blog.title, slug: blog.slug },
+    });
+
     res.status(201).json({ status: 'success', data: blog });
   } catch (err) {
     next(err);
@@ -1931,6 +2389,14 @@ export async function updateBlog(req: Request, res: Response, next: NextFunction
       data,
     });
 
+    recordActivityLog({
+      req,
+      action: 'UPDATE_BLOG',
+      entity: 'BlogPost',
+      entityId: id,
+      details: { title: updated.title, slug: updated.slug },
+    });
+
     res.json({ status: 'success', data: updated });
   } catch (err) {
     next(err);
@@ -1942,6 +2408,15 @@ export async function deleteBlog(req: Request, res: Response, next: NextFunction
   try {
     const id = paramStr(req);
     await prisma.blogPost.delete({ where: { id } });
+
+    recordActivityLog({
+      req,
+      action: 'DELETE_BLOG',
+      entity: 'BlogPost',
+      entityId: id,
+      details: { blogId: id },
+    });
+
     res.json({ status: 'success', message: 'Blog post deleted successfully' });
   } catch (err) {
     next(err);

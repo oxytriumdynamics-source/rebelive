@@ -15,6 +15,7 @@ import { logger } from '../../shared/utils/logger';
 import { sendMail } from '../../lib/mailer';
 import { otpEmailHtml, greetingEmailHtml } from '../../lib/emailTemplates';
 import { formatRebelId } from '../../shared/utils/rebelId';
+import { mergePastGuestOrders } from '../users/users.controller';
 import type { RegisterInput, LoginInput, SendOtpInput, VerifyOtpInput } from './auth.validator';
 import type { User } from '@prisma/client';
 
@@ -97,6 +98,9 @@ export async function registerUser(
   // Send OTP immediately after registration
   await sendOtp({ email: user.email });
 
+  // Automatically link any past guest orders matching this email or phone
+  mergePastGuestOrders(user.id, { phone: user.phone, email: user.email }).catch(() => {});
+
   const tokens = await generateAndStoreTokens(user);
   return { user: sanitizeUser(user), tokens };
 }
@@ -128,6 +132,9 @@ export async function loginUser(
   });
 
   logger.info(`[Auth] User logged in: ${user.email}`);
+
+  // Automatically link any past guest orders matching this email or phone
+  mergePastGuestOrders(user.id, { phone: user.phone, email: user.email }).catch(() => {});
 
   const tokens = await generateAndStoreTokens(user);
   return { user: sanitizeUser(user), tokens, emailVerified: true };
@@ -269,6 +276,9 @@ export async function verifyOtp(
       persona: preference?.personalityType ?? null,
     }),
   });
+
+  // Automatically link any past guest orders matching this email or phone
+  mergePastGuestOrders(verified.id, { phone: verified.phone, email: verified.email }).catch(() => {});
 
   const tokens = await generateAndStoreTokens(verified);
   return { user: sanitizeUser(verified), tokens };

@@ -7,9 +7,34 @@ import { shiprocketService } from './shiprocket.service';
 import { ValidationError, NotFoundError, UnauthorizedError } from '../../shared/errors/AppError';
 import { generateOrderNumber } from '../../shared/utils/generateOrderNumber';
 import type { PaymentMethod, OrderStatus } from '@prisma/client';
-import { mergePastGuestOrdersByPhone, normalizePhone } from '../users/users.controller';
+import { mergePastGuestOrders, mergePastGuestOrdersByPhone, normalizePhone } from '../users/users.controller';
 import { saveUniqueUserAddress } from '../users/address.service';
 import { sendOrderConfirmationEmail, isAuthenticEmail } from '../../lib/orderEmail';
+
+/**
+ * Validates that a string is a genuine human name and not a browser extension,
+ * internal DevTools call, or synthetic placeholder.
+ */
+export function isValidHumanName(name: string | null | undefined): boolean {
+  if (!name || typeof name !== 'string') return false;
+  const clean = name.trim();
+  if (clean.length < 2 || clean.length > 70) return false;
+  const lower = clean.toLowerCase();
+  if (
+    lower.startsWith('chrome:') ||
+    lower.includes('call method') ||
+    lower.includes('webpack') ||
+    lower.includes('devtools') ||
+    lower.includes('[object') ||
+    lower === 'undefined' ||
+    lower === 'null' ||
+    lower === 'customer' ||
+    lower === 'customer rebelive'
+  ) {
+    return false;
+  }
+  return /[a-zA-Z]/.test(clean);
+}
 
 const getAuthenticatedUserId = (req: Request): string | null => {
   return req.user ? req.user.id : null;
@@ -1532,17 +1557,16 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
       {};
 
     // Reject auto-creation if no legitimate Fastrr order data exists
-    if (
-      !params.customer &&
-      !params.shippingAddress &&
-      !params.items &&
-      !params.payment &&
-      !fastrrResult?.order_id &&
-      !fastrrResult?.fastrr_order_id &&
-      !fastrrResult?.order_number &&
-      !fastrrResult?.shipping_address &&
-      !fastrrResult?.customer
-    ) {
+    const hasCandidateItems =
+      (Array.isArray(params.items) && params.items.length > 0) ||
+      (Array.isArray(fastrrResult?.items) && fastrrResult.items.length > 0) ||
+      (Array.isArray(fastrrResult?.cart_data?.items) && fastrrResult.cart_data.items.length > 0) ||
+      (Array.isArray(fastrrResult?.line_items) && fastrrResult.line_items.length > 0);
+
+    const hasCandidateOrder =
+      Boolean(fastrrResult?.order_id || fastrrResult?.fastrr_order_id || fastrrResult?.order_number || params.payment);
+
+    if (!hasCandidateItems && !hasCandidateOrder && !existing) {
       return null;
     }
 
@@ -1553,25 +1577,31 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
         fastrrResult?.phone ||
         fastrrResult?.customer?.phone ||
         fastrrResult?.shipping_address?.phone ||
+        fastrrResult?.delivery_address?.phone ||
         '',
       email:
         params.customer?.email ||
         fastrrResult?.email ||
         fastrrResult?.customer?.email ||
         fastrrResult?.shipping_address?.email ||
+        fastrrResult?.delivery_address?.email ||
+        fastrrResult?.billing_address?.email ||
         '',
       firstName:
         params.customer?.firstName ||
         fastrrResult?.shipping_address?.first_name ||
         fastrrResult?.customer?.firstName ||
+        fastrrResult?.customer?.first_name ||
         '',
       lastName:
         params.customer?.lastName ||
         fastrrResult?.shipping_address?.last_name ||
         fastrrResult?.customer?.lastName ||
+        fastrrResult?.customer?.last_name ||
         '',
       name:
         params.customer?.name ||
+        fastrrResult?.customer?.name ||
         (fastrrResult?.shipping_address
           ? `${fastrrResult.shipping_address.first_name || ''} ${fastrrResult.shipping_address.last_name || ''}`.trim()
           : ''),
@@ -1600,6 +1630,7 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
       rawCustomer.contact ||
       rawCustomer.phone_number ||
       rawAddr.phone ||
+      rawAddr.billing_phone ||
       rawAddr.mobile ||
       rawAddr.contact ||
       fastrrResult?.phone ||
@@ -1611,34 +1642,65 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
       '';
     const cleanPhone = normalizePhone(rawPhone);
 
-    const rawName =
-      rawCustomer.name ||
-      `${rawCustomer.firstName || rawCustomer.first_name || ''} ${rawCustomer.lastName || rawCustomer.last_name || ''}`.trim() ||
-      rawAddr.name ||
-      `${rawAddr.first_name || ''} ${rawAddr.last_name || ''}`.trim() ||
-      'Customer';
-    const nameParts = rawName.split(' ');
-    const firstName = (rawCustomer.firstName || rawCustomer.first_name || nameParts[0] || 'Customer').trim();
-    const lastName = (rawCustomer.lastName || rawCustomer.last_name || nameParts.slice(1).join(' ') || 'REBELIVE').trim();
+    // Resolve Customer Full Name & Parts, strictly rejecting "chrome: call method" or garbage
+    const candidateNames = [
+      rawCustomer.name,
+      `${rawCustomer.firstName || rawCustomer.first_name || ''} ${rawCustomer.lastName || rawCustomer.last_name || ''}`.trim(),
+      rawAddr.billing_customer_name ? `${rawAddr.billing_customer_name} ${rawAddr.billing_last_name || ''}`.trim() : '',
+      rawAddr.name,
+      `${rawAddr.first_name || rawAddr.firstName || ''} ${rawAddr.last_name || rawAddr.lastName || ''}`.trim(),
+      fastrrResult?.customer?.name,
+      fastrrResult?.shipping_address ? `${fastrrResult.shipping_address.first_name || ''} ${fastrrResult.shipping_address.last_name || ''}`.trim() : '',
+    ].filter(isValidHumanName);
+
+    const validFullName = candidateNames[0] || 'Customer';
+    const validNameParts = validFullName.split(/\s+/).filter(Boolean);
+    const firstName = (validNameParts[0] || 'Customer').trim();
+    const lastName = (validNameParts.slice(1).join(' ') || (firstName === 'Customer' ? 'REBELIVE' : '')).trim();
+
+    // Resolve Authentic Email, strictly validating against dummy patterns
+    const candidateEmails = [
+      params.customer?.email,
+      rawCustomer.email,
+      rawAddr.email,
+      rawAddr.billing_email,
+      rawAddr.shipping_email,
+      rawAddr.customer_email,
+      fastrrResult?.email,
+      fastrrResult?.customer?.email,
+      fastrrResult?.shipping_address?.email,
+      fastrrResult?.delivery_address?.email,
+      fastrrResult?.billing_address?.email,
+      fastrrResult?.data?.customer?.email,
+      fastrrResult?.data?.email,
+      fastrrResult?.order?.email,
+      fastrrResult?.buyer?.email,
+    ];
+
+    let authenticEmail = '';
+    for (const cand of candidateEmails) {
+      if (cand && isAuthenticEmail(cand)) {
+        authenticEmail = String(cand).trim().toLowerCase();
+        break;
+      }
+    }
 
     const email = (
-      rawCustomer.email ||
-      rawAddr.email ||
-      fastrrResult?.email ||
-      fastrrResult?.customer?.email ||
-      (cleanPhone ? `rebel_${cleanPhone}@rebelive.co` : `guest_${Date.now()}@rebelive.co`)
-    ).trim().toLowerCase();
+      authenticEmail ||
+      (cleanPhone && cleanPhone.length >= 10 ? `rebel_${cleanPhone}@rebelive.co` : `guest_${Date.now()}@rebelive.co`)
+    ).toLowerCase();
 
     // 4. Resolve Target User
     let targetUserId = params.authUserId;
 
     if (!targetUserId) {
-      // Anonymous / Guest Checkout
+      // Anonymous / Guest Checkout: check by authentic email OR by phone
       let existingUser = await prisma.user.findFirst({
         where: {
           OR: [
-            { email },
+            ...(authenticEmail ? [{ email: authenticEmail }] : []),
             ...(cleanPhone && cleanPhone.length >= 10 ? [{ phone: { contains: cleanPhone } }] : []),
+            ...(email ? [{ email }] : []),
           ],
         },
       });
@@ -1655,15 +1717,16 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
               passwordHash: dummyPasswordHash,
               role: 'CUSTOMER',
               authProvider: 'fastrr',
-              emailVerified: true,
+              emailVerified: Boolean(authenticEmail),
             },
           });
         } catch {
           existingUser = await prisma.user.findFirst({
             where: {
               OR: [
-                { email },
+                ...(authenticEmail ? [{ email: authenticEmail }] : []),
                 ...(cleanPhone && cleanPhone.length >= 10 ? [{ phone: { contains: cleanPhone } }] : []),
+                ...(email ? [{ email }] : []),
               ],
             },
           });
@@ -1679,35 +1742,64 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
                 passwordHash: dummyPasswordHash,
                 role: 'CUSTOMER',
                 authProvider: 'fastrr',
-                emailVerified: true,
+                emailVerified: false,
               },
             });
           }
         }
       } else {
-        if (!existingUser.phone && cleanPhone) {
-          await prisma.user.update({
-            where: { id: existingUser.id },
-            data: { phone: cleanPhone },
-          });
+        // Existing user matched! Update with better/authentic info if currently missing or placeholder
+        const userUpdates: Record<string, any> = {};
+
+        // If existingUser has a dummy email (guest_* or rebel_*) and we now have an authentic email:
+        if (authenticEmail && !isAuthenticEmail(existingUser.email)) {
+          userUpdates.email = authenticEmail;
+          userUpdates.emailVerified = true;
         }
-        if (isAuthenticEmail(existingUser.email)) {
-          rawCustomer.email = existingUser.email;
+
+        // If existingUser has no phone or invalid phone, and we have a clean 10-digit phone:
+        if ((!existingUser.phone || existingUser.phone.length < 10) && cleanPhone && cleanPhone.length >= 10) {
+          userUpdates.phone = cleanPhone;
+        }
+
+        // If existingUser has a placeholder name (e.g. "chrome:", "Customer") and we have a valid human name:
+        if (!isValidHumanName(existingUser.firstName) && isValidHumanName(firstName)) {
+          userUpdates.firstName = firstName;
+          userUpdates.lastName = lastName;
+        }
+
+        if (Object.keys(userUpdates).length > 0) {
+          try {
+            existingUser = await prisma.user.update({
+              where: { id: existingUser.id },
+              data: userUpdates,
+            });
+          } catch (updateErr) {
+            console.warn('Non-fatal error updating guest user with authentic info:', updateErr);
+          }
         }
       }
       targetUserId = existingUser.id;
     } else {
-      // Authenticated user: save phone to profile if not yet saved
+      // Authenticated user: save phone and name to profile if not yet saved
       const loggedUser = await prisma.user.findUnique({
         where: { id: targetUserId },
-        select: { phone: true, email: true },
+        select: { phone: true, email: true, firstName: true },
       });
       if (loggedUser) {
-        if (!loggedUser.phone && cleanPhone) {
+        const loggedUserUpdates: Record<string, any> = {};
+        if (!loggedUser.phone && cleanPhone && cleanPhone.length >= 10) {
+          loggedUserUpdates.phone = cleanPhone;
+        }
+        if (!isValidHumanName(loggedUser.firstName) && isValidHumanName(firstName)) {
+          loggedUserUpdates.firstName = firstName;
+          loggedUserUpdates.lastName = lastName;
+        }
+        if (Object.keys(loggedUserUpdates).length > 0) {
           await prisma.user.update({
             where: { id: targetUserId },
-            data: { phone: cleanPhone },
-          });
+            data: loggedUserUpdates,
+          }).catch(() => {});
         }
         if (isAuthenticEmail(loggedUser.email)) {
           rawCustomer.email = loggedUser.email;
@@ -1930,7 +2022,7 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
           shiprocketOrderId: String(fastrrRef),
           trackingNumber: `SR-${cleanPhone ? cleanPhone.slice(-6) : Date.now().toString().slice(-6)}`,
           trackingUrl: `/track-order?id=${orderNumber}`,
-          notes: `Fastrr 1-Click Instant Checkout (Fastrr Ref: ${fastrrRef}) | Customer Phone: ${cleanPhone || rawPhone}${params.notes ? ' | ' + params.notes : ''
+          notes: `Fastrr 1-Click Instant Checkout (Fastrr Ref: ${fastrrRef}) | [Customer Phone: ${cleanPhone || rawPhone}] | [Customer Email: ${authenticEmail || email}]${params.notes ? ' | ' + params.notes : ''
             }`,
           items: {
             create: finalItems,
@@ -1984,12 +2076,12 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
       return created;
     });
 
-    // 9. Automatically link any past guest orders if phone number matches
-    if (cleanPhone && cleanPhone.length >= 10 && targetUserId) {
+    // 9. Automatically link any past guest orders if phone number or email matches
+    if (targetUserId) {
       try {
-        await mergePastGuestOrdersByPhone(targetUserId, cleanPhone);
+        await mergePastGuestOrders(targetUserId, { phone: cleanPhone, email: authenticEmail || email });
       } catch (mergeErr) {
-        console.warn('Non-fatal mergePastGuestOrdersByPhone error:', mergeErr);
+        console.warn('Non-fatal mergePastGuestOrders error:', mergeErr);
       }
     }
 
@@ -1998,7 +2090,7 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
       saveUniqueUserAddress(
         targetUserId,
         resolvedShippingAddress,
-        rawName,
+        validFullName,
         cleanPhone || rawPhone
       ).catch((err) => console.warn('Address auto-save error on order create:', err));
     }
@@ -2409,6 +2501,45 @@ export async function handleFastrrWebhook(req: Request, res: Response, next: Nex
           data: { shippingAddress: realShiprocketAddress },
         });
         existingOrder.shippingAddress = realShiprocketAddress as any;
+      }
+
+      // Automatically update linked user account with genuine customer name, phone, and authentic email
+      if (existingOrder.userId) {
+        try {
+          const orderUser = await prisma.user.findUnique({
+            where: { id: existingOrder.userId },
+            select: { id: true, email: true, phone: true, firstName: true },
+          });
+          if (orderUser) {
+            const userPatch: Record<string, any> = {};
+            if (
+              realShiprocketAddress.billing_email &&
+              isAuthenticEmail(realShiprocketAddress.billing_email) &&
+              !isAuthenticEmail(orderUser.email)
+            ) {
+              userPatch.email = realShiprocketAddress.billing_email.toLowerCase().trim();
+              userPatch.emailVerified = true;
+            }
+            if (realShiprocketAddress.billing_phone && (!orderUser.phone || orderUser.phone.length < 10)) {
+              userPatch.phone = normalizePhone(realShiprocketAddress.billing_phone);
+            }
+            if (
+              isValidHumanName(realShiprocketAddress.billing_customer_name) &&
+              !isValidHumanName(orderUser.firstName)
+            ) {
+              userPatch.firstName = realShiprocketAddress.billing_customer_name.trim();
+              userPatch.lastName = (realShiprocketAddress.billing_last_name || '').trim();
+            }
+            if (Object.keys(userPatch).length > 0) {
+              await prisma.user.update({
+                where: { id: orderUser.id },
+                data: userPatch,
+              });
+            }
+          }
+        } catch (uErr) {
+          console.warn('Non-fatal error updating linked user on Fastrr webhook:', uErr);
+        }
       }
 
       if (event.includes('paid') || event.includes('success')) {

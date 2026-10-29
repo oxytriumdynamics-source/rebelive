@@ -8,7 +8,9 @@ import {
   getUserAddresses,
   extractAddressFields,
   isValidRealAddress,
+  saveUniqueUserAddress,
 } from './address.service';
+import { isAuthenticEmail } from '../../lib/orderEmail';
 
 const userId = (req: Request): string => req.user!.id;
 const paramId = (req: Request, key = 'id'): string => req.params[key] as string;
@@ -44,49 +46,123 @@ export function normalizePhone(rawPhone?: string | null): string {
 }
 
 /**
- * Links past orders created via Fastrr / guest checkout to the given user based on phone number.
+ * Universally links past orders created via Fastrr / guest checkout to the given user account.
+ * Matches orders by phone number AND/OR authentic email address.
+ * Automatically saves order addresses to the user's saved addresses and populates missing profile phone.
  */
-export async function mergePastGuestOrdersByPhone(targetUserId: string, cleanPhone: string): Promise<number> {
-  if (!cleanPhone || cleanPhone.length < 10) return 0;
+export async function mergePastGuestOrders(
+  targetUserId: string,
+  params: { phone?: string | null; email?: string | null }
+): Promise<number> {
+  const cleanPhone = params.phone ? normalizePhone(params.phone) : '';
+  const cleanEmail = params.email && isAuthenticEmail(params.email) ? params.email.trim().toLowerCase() : '';
+
+  if ((!cleanPhone || cleanPhone.length < 10) && !cleanEmail) {
+    return 0;
+  }
 
   try {
-    // 1. Find all other users with matching phone (e.g. Fastrr-created guest users)
+    // 1. Find all other users with matching phone OR matching authentic email (e.g. Fastrr-created guest accounts)
     const otherUsers = await prisma.user.findMany({
       where: {
         id: { not: targetUserId },
-        phone: { contains: cleanPhone },
+        OR: [
+          ...(cleanPhone && cleanPhone.length >= 10 ? [{ phone: { contains: cleanPhone } }] : []),
+          ...(cleanEmail ? [{ email: cleanEmail }] : []),
+        ],
       },
-      select: { id: true },
+      select: { id: true, email: true, phone: true },
     });
     const otherUserIds = otherUsers.map((u) => u.id);
 
-    // 2. Find orders to reassign (either owned by those guest users or containing phone in notes)
+    // 2. Find orders to reassign (owned by those guest users OR containing phone/email in notes)
     const candidateOrders = await prisma.order.findMany({
       where: {
         userId: { not: targetUserId },
         OR: [
           ...(otherUserIds.length > 0 ? [{ userId: { in: otherUserIds } }] : []),
-          { notes: { contains: cleanPhone } },
+          ...(cleanPhone && cleanPhone.length >= 10 ? [{ notes: { contains: cleanPhone } }] : []),
+          ...(cleanEmail ? [{ notes: { contains: cleanEmail } }] : []),
         ],
       },
-      select: { id: true },
+      select: { id: true, shippingAddress: true, notes: true },
     });
 
-    if (candidateOrders.length === 0) return 0;
+    if (candidateOrders.length === 0) {
+      // Even if no orders to reassign, ensure user has phone if missing
+      if (cleanPhone && cleanPhone.length >= 10) {
+        const targetUser = await prisma.user.findUnique({
+          where: { id: targetUserId },
+          select: { phone: true },
+        });
+        if (!targetUser?.phone) {
+          await prisma.user.update({
+            where: { id: targetUserId },
+            data: { phone: cleanPhone },
+          });
+        }
+      }
+      return 0;
+    }
 
     const orderIds = candidateOrders.map((o) => o.id);
 
-    // Reassign orders to the target user
+    // Reassign orders to the authenticated target user
     const res = await prisma.order.updateMany({
       where: { id: { in: orderIds } },
       data: { userId: targetUserId },
     });
 
+    // Automatically auto-save shipping addresses from merged orders to the user's address book
+    for (const ord of candidateOrders) {
+      if (ord.shippingAddress) {
+        try {
+          await saveUniqueUserAddress(targetUserId, ord.shippingAddress);
+        } catch {}
+      }
+    }
+
+    // If target user profile lacks phone, populate from cleanPhone
+    if (cleanPhone && cleanPhone.length >= 10) {
+      const targetUser = await prisma.user.findUnique({
+        where: { id: targetUserId },
+        select: { phone: true },
+      });
+      if (!targetUser?.phone) {
+        await prisma.user.update({
+          where: { id: targetUserId },
+          data: { phone: cleanPhone },
+        });
+      }
+    }
+
+    // Clean up empty orphaned dummy guest users (guest_* / rebel_*) so they do not pollute admin directory
+    if (otherUserIds.length > 0) {
+      for (const ou of otherUsers) {
+        const isDummyEmail =
+          ou.email.startsWith('guest_') || ou.email.startsWith('rebel_') || ou.email.startsWith('fastrr_');
+        if (isDummyEmail) {
+          const remainingOrders = await prisma.order.count({ where: { userId: ou.id } });
+          if (remainingOrders === 0) {
+            await prisma.user.delete({ where: { id: ou.id } }).catch(() => {});
+          }
+        }
+      }
+    }
+
+    console.log(`🔗 [Order Linking] Reassigned ${res.count} orders to user ${targetUserId} (phone: ${cleanPhone || 'N/A'}, email: ${cleanEmail || 'N/A'})`);
     return res.count;
   } catch (err) {
-    console.warn('Non-fatal error merging past guest orders by phone:', err);
+    console.warn('Non-fatal error merging past guest orders:', err);
     return 0;
   }
+}
+
+/**
+ * Backward-compatible wrapper for phone-only linking.
+ */
+export async function mergePastGuestOrdersByPhone(targetUserId: string, cleanPhone: string): Promise<number> {
+  return mergePastGuestOrders(targetUserId, { phone: cleanPhone });
 }
 
 // POST /api/v1/users/link-phone
@@ -112,8 +188,8 @@ export async function linkPhone(req: Request, res: Response, next: NextFunction)
       },
     });
 
-    // Reassign all previous guest orders placed with this phone number
-    const mergedCount = await mergePastGuestOrdersByPhone(currentUserId, cleanPhone);
+    // Reassign all previous guest orders placed with this phone number or email
+    const mergedCount = await mergePastGuestOrders(currentUserId, { phone: cleanPhone, email: updatedUser.email });
 
     const { passwordHash, refreshTokens, googleId, otpCode, otpExpiry, ...safe } = updatedUser as any;
     res.json({
@@ -151,11 +227,8 @@ export async function updateProfile(req: Request, res: Response, next: NextFunct
       },
     });
 
-    // If phone was provided or updated, automatically link any matching past orders
-    let mergedCount = 0;
-    if (updateData.phone) {
-      mergedCount = await mergePastGuestOrdersByPhone(currentUserId, updateData.phone);
-    }
+    // Automatically link any matching past orders by phone and email
+    const mergedCount = await mergePastGuestOrders(currentUserId, { phone: user.phone, email: user.email });
 
     const { passwordHash, refreshTokens, googleId, otpCode, otpExpiry, ...safe } = user as any;
     res.json({
