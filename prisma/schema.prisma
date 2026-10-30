@@ -836,3 +836,16 @@ model BlogPost {
   @@map("blog_posts")
 }
 
+// ─── SYSTEM SETTINGS ───────────────────────────────────
+
+model SystemSetting {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  key         String   @unique
+  value       String   // JSON string or plain text
+  description String?
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("system_settings")
+}
+
+

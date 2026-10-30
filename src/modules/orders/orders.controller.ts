@@ -8,6 +8,7 @@ import { buildShiprocketAddress } from '../shipping/shipping.controller';
 import { saveUniqueUserAddress } from '../users/address.service';
 import { mergePastGuestOrders } from '../users/users.controller';
 import { sendOrderConfirmationEmail, isAuthenticEmail } from '../../lib/orderEmail';
+import { getCheckoutSetting } from '../admin/settings.service';
 import type { PaymentMethod, OrderStatus, PaymentStatus } from '@prisma/client';
 
 const uid = (req: Request) => req.user!.id;
@@ -95,6 +96,11 @@ export async function getOrder(req: Request, res: Response, next: NextFunction):
 // POST /api/v1/orders
 export async function placeOrder(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
+    const checkoutSetting = await getCheckoutSetting();
+    if (!checkoutSetting.enabled) {
+      throw new ValidationError(checkoutSetting.pauseMessage || 'Checkout is temporarily paused for maintenance. Please check back shortly.');
+    }
+
     const {
       shippingAddress: rawShippingAddr,
       paymentMethod,

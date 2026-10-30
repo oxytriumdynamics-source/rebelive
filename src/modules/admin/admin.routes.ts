@@ -38,6 +38,10 @@ router.use(authenticate, requireStaff);
 // ─── Admin Profile & Password Management (SUPERADMIN Only) ────
 router.patch('/change-password', requireSuperAdmin, adminController.changeAdminPassword);
 
+// ─── System & Store Settings (Checkout Control) ─────────
+router.get('/settings', requireAdmin, adminController.getSettings);
+router.patch('/settings/checkout', requireAdmin, adminController.updateCheckoutSetting);
+
 // ─── Dashboard (Accessible to all Staff) ──────────────────
 router.get('/dashboard', adminController.getDashboard);
 

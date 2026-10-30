@@ -5,6 +5,7 @@ import { optionalAuthenticate } from '../auth/auth.middleware';
 const router = Router();
 
 // ─── Fastrr Headless Checkout Endpoints ──────────────────────
+router.get('/checkout-status', shippingController.getCheckoutPublicStatus);
 router.post('/fastrr/initiate', optionalAuthenticate, shippingController.initiateFastrrCheckout);
 router.post('/fastrr/token', shippingController.generateFastrrToken);
 router.post('/fastrr/complete', optionalAuthenticate, shippingController.completeFastrrCheckout);

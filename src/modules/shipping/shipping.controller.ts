@@ -10,6 +10,7 @@ import type { PaymentMethod, OrderStatus } from '@prisma/client';
 import { mergePastGuestOrders, mergePastGuestOrdersByPhone, normalizePhone } from '../users/users.controller';
 import { saveUniqueUserAddress } from '../users/address.service';
 import { sendOrderConfirmationEmail, isAuthenticEmail } from '../../lib/orderEmail';
+import { getCheckoutSetting } from '../admin/settings.service';
 
 /**
  * Validates that a string is a genuine human name and not a browser extension,
@@ -586,6 +587,11 @@ export function buildShiprocketAddress(rawAddr: any = {}, rawCust: any = {}, raw
  */
 export async function initiateFastrrCheckout(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
+    const checkoutSetting = await getCheckoutSetting();
+    if (!checkoutSetting.enabled) {
+      throw new ValidationError(checkoutSetting.pauseMessage || 'Instant checkout is temporarily paused for maintenance. Please check back shortly.');
+    }
+
     const { items, customer, couponCode } = req.body as {
       items?: Array<{
         productId?: string;
@@ -826,6 +832,11 @@ export async function initiateFastrrCheckout(req: Request, res: Response, next: 
  */
 export async function generateFastrrToken(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
+    const checkoutSetting = await getCheckoutSetting();
+    if (!checkoutSetting.enabled) {
+      throw new ValidationError(checkoutSetting.pauseMessage || 'Instant checkout is temporarily paused for maintenance. Please check back shortly.');
+    }
+
     const { items, customer, couponCode, redirectUrl, shippingAddress } = req.body as {
       items?: Array<{
         productId?: string | number;
@@ -3311,5 +3322,26 @@ export async function handleShiprocketOrderWebhook(req: Request, res: Response, 
     next(err);
   }
 }
+
+/**
+ * GET /api/v1/shipping/checkout-status
+ * Public endpoint to query if checkout is currently enabled or paused store-wide.
+ */
+export async function getCheckoutPublicStatus(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const setting = await getCheckoutSetting();
+    res.json({
+      status: 'success',
+      data: {
+        enabled: setting.enabled,
+        pauseMessage: setting.pauseMessage,
+        updatedAt: setting.updatedAt,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 
 

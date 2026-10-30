@@ -15,6 +15,7 @@ import { logger } from '../../shared/utils/logger';
 import type { UserRole, OrderStatus } from '@prisma/client';
 import { productsCache } from '../products/products.cache';
 import { recordActivityLog } from './activityLog.service';
+import { getCheckoutSetting, setCheckoutSetting } from './settings.service';
 
 const qStr = (req: Request, key: string): string | undefined => {
   const v = req.query[key];
@@ -2422,4 +2423,43 @@ export async function deleteBlog(req: Request, res: Response, next: NextFunction
     next(err);
   }
 }
+
+// ─── STORE SYSTEM SETTINGS (CHECKOUT CONTROL) ──────────
+
+// GET /api/v1/admin/settings
+export async function getSettings(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const checkout = await getCheckoutSetting();
+    res.json({
+      status: 'success',
+      data: {
+        checkout,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// PATCH /api/v1/admin/settings/checkout
+export async function updateCheckoutSetting(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { enabled, pauseMessage } = req.body as { enabled: boolean; pauseMessage?: string };
+
+    if (typeof enabled !== 'boolean') {
+      throw new ValidationError('Checkout state "enabled" (boolean) is required.');
+    }
+
+    const updated = await setCheckoutSetting(enabled, pauseMessage, req.user as any, req);
+
+    res.json({
+      status: 'success',
+      message: `Store checkout successfully ${updated.enabled ? 'activated' : 'paused'}`,
+      data: updated,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 
