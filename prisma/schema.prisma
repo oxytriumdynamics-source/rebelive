@@ -457,6 +457,8 @@ model Order {
   trackingUrl          String?     @map("tracking_url")
   shiprocketOrderId    String?     @map("shiprocket_order_id")
   shiprocketShipmentId String?     @map("shiprocket_shipment_id")
+  estimatedDeliveryDate DateTime?  @map("estimated_delivery_date")
+  estimatedDeliveryText String?    @map("estimated_delivery_text")
   notes                String?
   createdAt            DateTime    @default(now()) @map("created_at")
   updatedAt         DateTime    @updatedAt @map("updated_at")

@@ -67,6 +67,89 @@ export interface TrackingResult {
   shiprocketShipmentId?: string | number | null;
 }
 
+export const SHIPMENT_FRIENDLY_DESCRIPTIONS: Record<string, string> = {
+  CONFIRMED: 'Your order has been successfully confirmed.',
+  PROCESSING: 'Your order is being prepared for dispatch.',
+  'PICKED UP': 'Your shipment has been picked up by our delivery partner.',
+  'IN TRANSIT': 'Your shipment is on its way to your delivery destination.',
+  'OUT FOR DELIVERY': 'Your order is out for delivery. Get ready to receive it!',
+  DELIVERED: 'Your order has been successfully delivered.',
+  CANCELLED: 'This order has been cancelled.',
+  'DELIVERY FAILED': 'Delivery could not be completed. Our delivery partner may attempt another delivery.',
+  'RTO INITIATED': 'Your shipment is being returned to the fulfilment centre.',
+};
+
+export function mapShiprocketStatus(rawStatus?: string | number | null): {
+  status:
+    | 'CONFIRMED'
+    | 'PROCESSING'
+    | 'PICKED UP'
+    | 'IN TRANSIT'
+    | 'OUT FOR DELIVERY'
+    | 'DELIVERED'
+    | 'CANCELLED'
+    | 'DELIVERY FAILED'
+    | 'RTO INITIATED';
+  description: string;
+} {
+  const s = String(rawStatus || '').toUpperCase().trim();
+
+  if (s.includes('RTO') || s.includes('RETURN_TO_ORIGIN') || s === '10' || s === '13' || s === '14') {
+    return { status: 'RTO INITIATED', description: SHIPMENT_FRIENDLY_DESCRIPTIONS['RTO INITIATED'] };
+  }
+  if (
+    s.includes('FAIL') ||
+    s.includes('UNDELIVER') ||
+    s.includes('UN-DELIVER') ||
+    s.includes('NOT DELIVERED') ||
+    s.includes('NDR') ||
+    s === '9'
+  ) {
+    return { status: 'DELIVERY FAILED', description: SHIPMENT_FRIENDLY_DESCRIPTIONS['DELIVERY FAILED'] };
+  }
+  if (s.includes('CANCEL') || s === '8') {
+    return { status: 'CANCELLED', description: SHIPMENT_FRIENDLY_DESCRIPTIONS['CANCELLED'] };
+  }
+  if (s.includes('DELIVERED') || s === '7' || s.includes('DELIVERY COMPLETED')) {
+    return { status: 'DELIVERED', description: SHIPMENT_FRIENDLY_DESCRIPTIONS['DELIVERED'] };
+  }
+  if (s.includes('OUT FOR DELIVERY') || s.includes('OUT_FOR_DELIVERY') || s === 'OFD' || s === '17') {
+    return { status: 'OUT FOR DELIVERY', description: SHIPMENT_FRIENDLY_DESCRIPTIONS['OUT FOR DELIVERY'] };
+  }
+  if (
+    s.includes('IN TRANSIT') ||
+    s.includes('IN_TRANSIT') ||
+    s.includes('TRANSIT') ||
+    s.includes('SHIPPED') ||
+    s.includes('DISPATCH') ||
+    s.includes('REACHED') ||
+    s === '6'
+  ) {
+    return { status: 'IN TRANSIT', description: SHIPMENT_FRIENDLY_DESCRIPTIONS['IN TRANSIT'] };
+  }
+  if (
+    s.includes('PICKED UP') ||
+    s.includes('PICKED_UP') ||
+    s.includes('PICKUP DONE') ||
+    s.includes('PICKED') ||
+    s === '19'
+  ) {
+    return { status: 'PICKED UP', description: SHIPMENT_FRIENDLY_DESCRIPTIONS['PICKED UP'] };
+  }
+  if (
+    s.includes('PROCESSING') ||
+    s.includes('MANIFEST') ||
+    s.includes('READY') ||
+    s.includes('PACK') ||
+    s.includes('AWB') ||
+    s === '2'
+  ) {
+    return { status: 'PROCESSING', description: SHIPMENT_FRIENDLY_DESCRIPTIONS['PROCESSING'] };
+  }
+
+  return { status: 'CONFIRMED', description: SHIPMENT_FRIENDLY_DESCRIPTIONS['CONFIRMED'] };
+}
+
 class ShiprocketService {
   private token: string | null = null;
   private tokenExpiry: number = 0;
@@ -585,6 +668,115 @@ class ShiprocketService {
   }
 
   /**
+   * Fetches real-time estimated delivery date (EDD) from Shiprocket Serviceability API.
+   * Secure backend integration that falls back gracefully if serviceability is unavailable.
+   */
+  async getEstimatedDelivery(params: {
+    deliveryPostcode?: string | number | null;
+    pickupPostcode?: string | number | null;
+    isCod?: boolean;
+    orderDate?: Date | string;
+    weightKg?: number;
+  }): Promise<{
+    estimatedDeliveryText: string;
+    estimatedDeliveryDate: Date;
+    courierName?: string;
+  }> {
+    const pickupPincode = String(params.pickupPostcode || env.SR_PICKUP_PINCODE || '143001').trim();
+    const cleanDeliveryPostcode = String(params.deliveryPostcode || '').trim().replace(/\D/g, '');
+    const orderCreatedAt = params.orderDate ? new Date(params.orderDate) : new Date();
+
+    // Default graceful fallback: 3 to 4 business days from order placement
+    const fallbackDays = 4;
+    const fallbackDate = new Date(orderCreatedAt.getTime() + fallbackDays * 24 * 60 * 60 * 1000);
+    const fallbackText = fallbackDate.toLocaleDateString('en-IN', {
+      weekday: 'short',
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+
+    if (!cleanDeliveryPostcode || cleanDeliveryPostcode.length !== 6) {
+      return {
+        estimatedDeliveryText: fallbackText,
+        estimatedDeliveryDate: fallbackDate,
+      };
+    }
+
+    try {
+      const token = await this.getAuthToken();
+      if (token) {
+        const codFlag = params.isCod ? '1' : '0';
+        const weight = params.weightKg || 1;
+        const url = `${this.baseUrl}/courier/serviceability/?pickup_postcode=${encodeURIComponent(
+          pickupPincode
+        )}&delivery_postcode=${encodeURIComponent(cleanDeliveryPostcode)}&weight=${weight}&cod=${codFlag}`;
+
+        const res = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (res.ok) {
+          const data = (await res.json()) as any;
+          const availableCouriers = data?.data?.available_courier_companies || [];
+          if (Array.isArray(availableCouriers) && availableCouriers.length > 0) {
+            const recId = data?.data?.recommended_courier_company_id;
+            const chosen = availableCouriers.find((c: any) => c.courier_company_id === recId) || availableCouriers[0];
+
+            if (chosen) {
+              const rawEtd = chosen.etd || chosen.estimated_delivery_date;
+              const estDays = Number(chosen.estimated_delivery_days);
+
+              if (rawEtd) {
+                const parsedEtd = new Date(rawEtd);
+                if (!isNaN(parsedEtd.getTime())) {
+                  const formattedEtd = parsedEtd.toLocaleDateString('en-IN', {
+                    weekday: 'short',
+                    day: '2-digit',
+                    month: 'short',
+                    year: 'numeric',
+                  });
+                  return {
+                    estimatedDeliveryText: formattedEtd,
+                    estimatedDeliveryDate: parsedEtd,
+                    courierName: chosen.courier_name,
+                  };
+                }
+              }
+
+              if (estDays > 0) {
+                const calculatedDate = new Date(orderCreatedAt.getTime() + estDays * 24 * 60 * 60 * 1000);
+                const formattedEtd = calculatedDate.toLocaleDateString('en-IN', {
+                  weekday: 'short',
+                  day: '2-digit',
+                  month: 'short',
+                  year: 'numeric',
+                });
+                return {
+                  estimatedDeliveryText: formattedEtd,
+                  estimatedDeliveryDate: calculatedDate,
+                  courierName: chosen.courier_name,
+                };
+              }
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('⚠️ Non-fatal error querying Shiprocket EDD API:', err);
+    }
+
+    return {
+      estimatedDeliveryText: fallbackText,
+      estimatedDeliveryDate: fallbackDate,
+    };
+  }
+
+  /**
    * Tracks a shipment via Shiprocket AWB or order ID.
    */
   async trackShipment(
@@ -593,9 +785,10 @@ class ShiprocketService {
       orderNumber: string;
       createdAt: Date;
       status: string;
-      address?: { city: string; state: string } | null;
+      address?: { city?: string; state?: string; postalCode?: string; pincode?: string } | null;
       trackingNumber?: string | null;
       courierName?: string | null;
+      estimatedDeliveryText?: string | null;
       statusHistory?: Array<{ status: string; note?: string | null; createdAt: Date }>;
     }
   ): Promise<TrackingResult> {
@@ -638,28 +831,131 @@ class ShiprocketService {
           if (trackingData && trackingData.track_status !== 0) {
             const track = trackingData.shipment_track?.[0] || {};
             const rawStatus = (track.current_status || '').toUpperCase();
-            const isDelivered = rawStatus.includes('DELIVER') || dbOrderContext?.status === 'DELIVERED';
-            const statusText = isDelivered ? 'Delivered · Handed to Recipient' : (track.current_status || 'In Transit');
-            const currentStatus = isDelivered ? 'DELIVERED' : (track.current_status || 'IN_TRANSIT');
-
-            const activities: TrackingScan[] = (trackingData.shipment_track_activities || []).map(
-              (act: any) => ({
-                date: act.date || new Date().toISOString(),
-                status: act.status || 'In Transit',
-                activity: act.activity || 'Package in transit',
-                location: act.location || 'Hub',
-              })
+            const { status: currentStatus, description: currentDesc } = mapShiprocketStatus(
+              rawStatus || dbOrderContext?.status
             );
+
+            // Carrier partner: actual assigned courier name from Shiprocket or fallback to Awaiting Courier Assignment
+            const courierName =
+              track.courier_name &&
+              track.courier_name.trim() !== '' &&
+              track.courier_name !== 'Shiprocket Express'
+                ? track.courier_name.trim()
+                : dbOrderContext?.courierName && dbOrderContext.courierName !== 'Shiprocket Express'
+                ? dbOrderContext.courierName.trim()
+                : 'Awaiting Courier Assignment';
+
+            // Gather all genuine events
+            const rawScans: Array<{
+              date: string;
+              timestamp: number;
+              rawStatus: string;
+              location: string;
+            }> = [];
+
+            // Add order confirmation if context available
+            if (dbOrderContext?.createdAt) {
+              rawScans.push({
+                date: new Date(dbOrderContext.createdAt).toISOString(),
+                timestamp: new Date(dbOrderContext.createdAt).getTime(),
+                rawStatus: 'CONFIRMED',
+                location: 'REBELIVE DISPATCH CENTRE',
+              });
+            }
+
+            // Add genuine Shiprocket tracking scans
+            for (const act of trackingData.shipment_track_activities || []) {
+              const dStr = String(act.date || '');
+              const ts = new Date(dStr).getTime() || Date.now();
+              rawScans.push({
+                date: dStr,
+                timestamp: ts,
+                rawStatus: act.status || act.activity || 'IN_TRANSIT',
+                location: String(act.location || ''),
+              });
+            }
+
+            // Sort chronologically (oldest to newest)
+            rawScans.sort((a, b) => a.timestamp - b.timestamp);
+
+            // Deduplicate, map customer-friendly descriptions and locations
+            const activities: TrackingScan[] = [];
+            const seenKeys = new Set<string>();
+            let lastKnownLocation = 'REBELIVE DISPATCH CENTRE';
+
+            for (const item of rawScans) {
+              const { status, description } = mapShiprocketStatus(item.rawStatus);
+
+              let loc = item.location ? item.location.trim() : '';
+              if (status === 'CONFIRMED' || status === 'PROCESSING') {
+                loc = 'REBELIVE DISPATCH CENTRE';
+                lastKnownLocation = 'REBELIVE DISPATCH CENTRE';
+              } else if (loc && loc !== 'Hub' && loc !== 'Rebelive Fulfillment Center') {
+                lastKnownLocation = loc;
+              } else {
+                loc = lastKnownLocation;
+              }
+
+              const dateKey = item.date ? item.date.slice(0, 16) : '';
+              const dedupKey = `${status}|${loc}|${dateKey}`;
+              if (seenKeys.has(dedupKey)) continue;
+              seenKeys.add(dedupKey);
+
+              activities.push({
+                date: item.date
+                  ? new Date(item.date).toLocaleString('en-IN', {
+                      day: '2-digit',
+                      month: 'short',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      hour12: true,
+                    })
+                  : new Date().toLocaleString('en-IN'),
+                status,
+                activity: description,
+                location: loc,
+              });
+            }
+
+            const isDelivered = currentStatus === 'DELIVERED';
+            const isCancelled = currentStatus === 'CANCELLED';
+
+            let liveEdd = '';
+            if (track.edd) {
+              const p = new Date(track.edd);
+              liveEdd = !isNaN(p.getTime())
+                ? p.toLocaleDateString('en-IN', {
+                    weekday: 'short',
+                    day: '2-digit',
+                    month: 'short',
+                    year: 'numeric',
+                  })
+                : String(track.edd);
+            }
+            if (!liveEdd && dbOrderContext?.estimatedDeliveryText) {
+              liveEdd = dbOrderContext.estimatedDeliveryText;
+            }
+            if (!liveEdd) {
+              const pCode = (dbOrderContext?.address as any)?.billing_pincode || (dbOrderContext?.address as any)?.postalCode;
+              const eddRes = await this.getEstimatedDelivery({
+                deliveryPostcode: pCode,
+                orderDate: dbOrderContext?.createdAt,
+              });
+              liveEdd = eddRes.estimatedDeliveryText;
+            }
+
+            const estimatedDelivery = isDelivered ? 'Delivered to Recipient' : isCancelled ? 'Order Cancelled' : liveEdd;
 
             return {
               isLive: true,
               orderNumber: dbOrderContext?.orderNumber || identifier,
               trackingNumber: track.awb_code || identifier,
-              courierName: track.courier_name || 'Shiprocket Express',
+              courierName,
               currentStatus,
-              statusText,
-              estimatedDelivery: isDelivered ? 'Delivered to Recipient' : (track.edd || 'Within 24–48 Hours'),
-              origin: track.origin || 'Amritsar Cold Hub',
+              statusText: isDelivered ? 'Delivered · Handed to Recipient' : isCancelled ? 'Order Cancelled' : currentDesc,
+              estimatedDelivery,
+              origin: 'REBELIVE WAREHOUSE',
               destination: track.destination || (dbOrderContext?.address?.city ? `${dbOrderContext.address.city}, ${dbOrderContext.address.state || 'India'}` : 'Delivery Destination'),
               activities,
               shiprocketOrderId: track.order_id,
@@ -677,48 +973,72 @@ class ShiprocketService {
     if (dbOrderContext) {
       const orderNum = dbOrderContext.orderNumber;
       const trackingNum = dbOrderContext.trackingNumber || identifier;
-      const rawStatus = (dbOrderContext.status || '').toUpperCase();
+      const { status: currentStatus, description: currentDesc } = mapShiprocketStatus(dbOrderContext.status);
 
-      const isDelivered = rawStatus === 'DELIVERED';
-      const isShipped = rawStatus === 'SHIPPED';
-      const isProcessing = rawStatus === 'PROCESSING';
-      const isCancelled = rawStatus === 'CANCELLED';
+      const courierName =
+        dbOrderContext.courierName &&
+        dbOrderContext.courierName !== 'Shiprocket Express' &&
+        dbOrderContext.courierName !== 'Pending'
+          ? dbOrderContext.courierName
+          : 'Awaiting Courier Assignment';
 
-      const statusText = isDelivered
-        ? 'Delivered · Handed to Recipient'
-        : isShipped
-        ? 'Dispatched · Handed over to Courier'
-        : isProcessing
-        ? 'Processing · Packing in Fulfillment Center'
-        : isCancelled
-        ? 'Order Cancelled'
-        : 'Confirmed · Awaiting Dispatch';
-
-      const currentStatus = rawStatus || 'CONFIRMED';
       const destination = dbOrderContext.address?.city
         ? `${dbOrderContext.address.city}, ${dbOrderContext.address.state || 'India'}`
         : 'Destination Address';
 
-      const activities: TrackingScan[] = [];
+      const rawDbEvents: Array<{
+        date: string;
+        timestamp: number;
+        status: string;
+        note?: string;
+      }> = [];
+
+      // Always include genuine order confirmation
+      rawDbEvents.push({
+        date: new Date(dbOrderContext.createdAt).toISOString(),
+        timestamp: new Date(dbOrderContext.createdAt).getTime(),
+        status: 'CONFIRMED',
+      });
+
       if (dbOrderContext.statusHistory && dbOrderContext.statusHistory.length > 0) {
         for (const h of dbOrderContext.statusHistory) {
-          activities.push({
-            date: new Date(h.createdAt).toLocaleString('en-IN', {
-              day: '2-digit',
-              month: 'short',
-              year: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit',
-              hour12: true,
-            }),
+          rawDbEvents.push({
+            date: new Date(h.createdAt).toISOString(),
+            timestamp: new Date(h.createdAt).getTime(),
             status: h.status,
-            activity: h.note || `Order status updated to ${h.status}`,
-            location: 'Rebelive Fulfillment Center',
+            note: h.note || undefined,
           });
         }
-      } else {
+      }
+
+      // Sort chronologically (oldest to newest)
+      rawDbEvents.sort((a, b) => a.timestamp - b.timestamp);
+
+      const activities: TrackingScan[] = [];
+      const seenKeys = new Set<string>();
+      let lastKnownLocation = 'REBELIVE DISPATCH CENTRE';
+
+      for (const ev of rawDbEvents) {
+        const { status, description } = mapShiprocketStatus(ev.status);
+
+        let loc = 'REBELIVE DISPATCH CENTRE';
+        if (status !== 'CONFIRMED' && status !== 'PROCESSING') {
+          const locMatch = ev.note?.match(/at\s+([^()]+)/i);
+          if (locMatch && locMatch[1]) {
+            loc = locMatch[1].trim();
+            lastKnownLocation = loc;
+          } else {
+            loc = lastKnownLocation;
+          }
+        }
+
+        const dateKey = ev.date ? ev.date.slice(0, 16) : '';
+        const dedupKey = `${status}|${loc}|${dateKey}`;
+        if (seenKeys.has(dedupKey)) continue;
+        seenKeys.add(dedupKey);
+
         activities.push({
-          date: new Date(dbOrderContext.createdAt).toLocaleString('en-IN', {
+          date: new Date(ev.date).toLocaleString('en-IN', {
             day: '2-digit',
             month: 'short',
             year: 'numeric',
@@ -726,21 +1046,40 @@ class ShiprocketService {
             minute: '2-digit',
             hour12: true,
           }),
-          status: 'Confirmed',
-          activity: 'Order placed & confirmed. Awaiting courier handover.',
-          location: 'Rebelive Digital Ops',
+          status,
+          activity: description,
+          location: loc,
         });
       }
 
+      const isDelivered = currentStatus === 'DELIVERED';
+      const isCancelled = currentStatus === 'CANCELLED';
+
+      let dbEdd = dbOrderContext.estimatedDeliveryText || '';
+      if (!dbEdd) {
+        const pCode = (dbOrderContext.address as any)?.billing_pincode || (dbOrderContext.address as any)?.postalCode;
+        const eddRes = await this.getEstimatedDelivery({
+          deliveryPostcode: pCode,
+          orderDate: dbOrderContext.createdAt,
+        });
+        dbEdd = eddRes.estimatedDeliveryText;
+      }
+
+      const estimatedDelivery = isDelivered ? 'Delivered to Recipient' : isCancelled ? 'Order Cancelled' : dbEdd;
+
       return {
-        isLive: Boolean(dbOrderContext.trackingNumber && dbOrderContext.trackingNumber !== 'SR-PENDING' && !dbOrderContext.trackingNumber.startsWith('SR-AWB-PENDING')),
+        isLive: Boolean(
+          dbOrderContext.trackingNumber &&
+          dbOrderContext.trackingNumber !== 'SR-PENDING' &&
+          !dbOrderContext.trackingNumber.startsWith('SR-AWB-PENDING')
+        ),
         orderNumber: orderNum,
         trackingNumber: trackingNum,
-        courierName: dbOrderContext.courierName || 'Shiprocket Express',
+        courierName,
         currentStatus,
-        statusText,
-        estimatedDelivery: isDelivered ? 'Delivered to Recipient' : isCancelled ? 'N/A' : 'Pending Courier Pickup',
-        origin: 'Amritsar Cold Hub (Punjab)',
+        statusText: isDelivered ? 'Delivered · Handed to Recipient' : isCancelled ? 'Order Cancelled' : currentDesc,
+        estimatedDelivery,
+        origin: 'REBELIVE WAREHOUSE',
         destination,
         activities,
       };
@@ -751,11 +1090,11 @@ class ShiprocketService {
       isLive: false,
       orderNumber: identifier,
       trackingNumber: identifier,
-      courierName: 'Shiprocket Express',
+      courierName: 'Awaiting Courier Assignment',
       currentStatus: 'NOT_FOUND',
       statusText: 'No consignment found',
-      estimatedDelivery: 'N/A',
-      origin: '',
+      estimatedDelivery: 'Available upon order lookup',
+      origin: 'REBELIVE WAREHOUSE',
       destination: '',
       activities: [],
     };

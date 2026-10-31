@@ -252,6 +252,7 @@ export interface OrderConfirmationEmailProps {
   customerName: string;
   orderNumber: string;
   orderDate?: string | Date;
+  estimatedDelivery?: string;
   paymentMethod?: string;
   paymentStatus?: string;
   items: OrderEmailItem[];
@@ -277,8 +278,9 @@ export function orderConfirmationEmailHtml(props: OrderConfirmationEmailProps): 
     customerName,
     orderNumber,
     orderDate,
-    paymentMethod = 'UPI / Instant Pay',
-    paymentStatus = 'Completed',
+    estimatedDelivery,
+    paymentMethod = 'UPI',
+    paymentStatus = 'Verified & Paid',
     items = [],
     subtotal,
     discountAmount = 0,
@@ -377,9 +379,9 @@ export function orderConfirmationEmailHtml(props: OrderConfirmationEmailProps): 
       </tr>
     </table>
 
-    <h1 style="${S.h1}">Pack confirmed, ${customerName}.</h1>
+    <h1 style="${S.h1}">You're all set, ${customerName}.</h1>
     <p style="${S.body}">
-      We have received your order and payment. Our fulfillment crew at the Amritsar Cold Dispatch Center is currently prepping your cold-pack consignment with temperature protection.
+      Your order is confirmed, and our team is getting your REBELIVE pack ready for dispatch. We'll notify you as soon as it ships, along with your tracking details.
     </p>
 
     <!-- Order Meta Summary Card -->
@@ -395,9 +397,20 @@ export function orderConfirmationEmailHtml(props: OrderConfirmationEmailProps): 
           <p style="margin:0 0 4px; font-size:9px; letter-spacing:0.25em; text-transform:uppercase; color:rgba(255,255,255,0.45); font-family:Arial,sans-serif;">
             Order Date
           </p>
-          <p style="margin:0; font-size:13px; color:#ffffff; font-family:Arial,sans-serif;">
+          <p style="margin:0${estimatedDelivery ? ' 0 12px' : ''}; font-size:13px; color:#ffffff; font-family:Arial,sans-serif;">
             ${formattedDate}
           </p>
+          ${
+            estimatedDelivery
+              ? `
+          <p style="margin:0 0 4px; font-size:9px; letter-spacing:0.25em; text-transform:uppercase; color:rgba(255,255,255,0.45); font-family:Arial,sans-serif;">
+            Estimated Delivery
+          </p>
+          <p style="margin:0; font-size:13px; font-weight:700; color:#10b981; font-family:Arial,sans-serif;">
+            ${estimatedDelivery}
+          </p>`
+              : ''
+          }
         </td>
         <td width="50%" valign="top" style="border-left:1px solid rgba(255,255,255,0.12); padding-left:16px;">
           <p style="margin:0 0 4px; font-size:9px; letter-spacing:0.25em; text-transform:uppercase; color:rgba(255,255,255,0.45); font-family:Arial,sans-serif;">
@@ -460,16 +473,8 @@ export function orderConfirmationEmailHtml(props: OrderConfirmationEmailProps): 
           : ''
       }
       <tr>
-        <td style="padding:6px 0; font-size:13px; color:#666666; font-family:Arial,sans-serif;">
-          Cold-Pack Express Shipping
-        </td>
-        <td align="right" style="padding:6px 0; font-size:13px; color:#0a0a0a; font-family:Arial,sans-serif;">
-          ${shippingAmount === 0 ? '<strong style="color:#059669;">FREE</strong>' : `&#8377;${shippingAmount.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}
-        </td>
-      </tr>
-      <tr>
         <td style="padding:12px 0 0; border-top:1px solid #0a0a0a; font-size:16px; font-weight:700; color:#0a0a0a; font-family:Arial,sans-serif;">
-          Total Paid
+          ${paymentStatus.includes('COD') ? 'Total Payable' : 'Total Paid'}
         </td>
         <td align="right" style="padding:12px 0 0; border-top:1px solid #0a0a0a; font-size:18px; font-weight:700; color:#0a0a0a; font-family:Arial,sans-serif;">
           &#8377;${total.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
@@ -493,15 +498,16 @@ export function orderConfirmationEmailHtml(props: OrderConfirmationEmailProps): 
     <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8f8f8; padding:14px 18px; border-left:3px solid #0a0a0a; margin:0 0 20px;">
       <tr>
         <td>
+          <p style="margin:0 0 4px; font-size:12px; font-weight:700; color:#0a0a0a; font-family:Arial,sans-serif;">Need a hand?</p>
           <p style="margin:0; font-size:12px; line-height:1.6; color:#555555; font-family:Arial,sans-serif;">
-            <strong>Cold-Chain Guarantee:</strong> All REBELIVE beverages are dispatched in temperature-shielded packaging. If you need any assistance, reach us at <a href="mailto:support@rebelive.com" style="color:#0a0a0a; font-weight:700;">support@rebelive.com</a>.
+            For any questions about your order, we're just an email away at <a href="mailto:support@rebelive.com" style="color:#0a0a0a; font-weight:700;">support@rebelive.com</a>.
           </p>
         </td>
       </tr>
     </table>
 
     <hr style="${S.rule}"/>
-    <p style="${S.note}">Wake &middot; Fuel &middot; Rebel &mdash; Crafted for the Unstoppable.</p>
+    <p style="${S.note}">WAKE &middot; FUEL &middot; REBEL</p>
   `;
 
   return baseWrapper(content);

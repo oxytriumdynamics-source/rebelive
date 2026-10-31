@@ -1106,22 +1106,51 @@ export async function updateProduct(req: Request, res: Response, next: NextFunct
             },
           });
         } else {
-          // CREATE NEW PACK VARIANT
-          const cleanSku = v.sku || `RBL-${(updated.slug || 'VAR').toUpperCase()}-${Date.now().toString().slice(-4)}`;
-          await prisma.productVariant.create({
-            data: {
-              id: nextVarId++,
-              productId: targetId,
-              sku: cleanSku,
-              name: v.name || `${updated.name} · Pack`,
-              sizeMl: v.sizeMl ? Number(v.sizeMl) : 250,
-              price: Number(v.price) || 499,
-              compareAtPrice: v.compareAtPrice ? Number(v.compareAtPrice) : null,
-              stockQty: Number(v.stockQty) || 100,
-              isDefault: Boolean(v.isDefault),
-              isActive: v.isActive !== undefined ? Boolean(v.isActive) : true,
-            },
-          });
+          // Check if variant already exists by SKU or name before creating duplicate
+          let existingVar: any = null;
+          if (v.sku) {
+            existingVar = await prisma.productVariant.findFirst({
+              where: { productId: targetId, sku: v.sku },
+            });
+          }
+          if (!existingVar && v.name) {
+            existingVar = await prisma.productVariant.findFirst({
+              where: { productId: targetId, name: v.name },
+            });
+          }
+
+          if (existingVar) {
+            await prisma.productVariant.update({
+              where: { id: existingVar.id },
+              data: {
+                sku: v.sku ?? undefined,
+                price: v.price !== undefined ? Number(v.price) : undefined,
+                compareAtPrice: v.compareAtPrice !== undefined ? (v.compareAtPrice ? Number(v.compareAtPrice) : null) : undefined,
+                stockQty: v.stockQty !== undefined ? Number(v.stockQty) : undefined,
+                name: v.name ?? undefined,
+                sizeMl: v.sizeMl !== undefined ? Number(v.sizeMl) : undefined,
+                isActive: v.isActive !== undefined ? Boolean(v.isActive) : undefined,
+                isDefault: v.isDefault !== undefined ? Boolean(v.isDefault) : undefined,
+              },
+            });
+          } else {
+            // CREATE NEW PACK VARIANT
+            const cleanSku = v.sku || `RBL-${(updated.slug || 'VAR').toUpperCase()}-${Date.now().toString().slice(-4)}`;
+            await prisma.productVariant.create({
+              data: {
+                id: nextVarId++,
+                productId: targetId,
+                sku: cleanSku,
+                name: v.name || `${updated.name} · Pack`,
+                sizeMl: v.sizeMl ? Number(v.sizeMl) : 250,
+                price: Number(v.price) || 499,
+                compareAtPrice: v.compareAtPrice ? Number(v.compareAtPrice) : null,
+                stockQty: v.stockQty !== undefined ? Number(v.stockQty) : 0,
+                isDefault: Boolean(v.isDefault),
+                isActive: v.isActive !== undefined ? Boolean(v.isActive) : true,
+              },
+            });
+          }
         }
       }
     }

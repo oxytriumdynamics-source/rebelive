@@ -155,6 +155,13 @@ export async function placeOrder(req: Request, res: Response, next: NextFunction
     const initialPaymentStatus: PaymentStatus = isPaymentComplete ? 'COMPLETED' : 'PENDING';
     const txnId = transactionId || (isPaymentComplete ? `TXN-${Date.now()}-${Math.floor(Math.random() * 89999 + 10000)}` : null);
 
+    // Resolve order-specific Estimated Delivery Date (EDD)
+    const eddResult = await shiprocketService.getEstimatedDelivery({
+      deliveryPostcode: (resolvedShippingAddress as any)?.postalCode,
+      isCod: paymentMethod === 'COD',
+      orderDate: new Date(),
+    });
+
     const order = await prisma.$transaction(async (tx) => {
       const newOrder = await tx.order.create({
         data: {
@@ -167,6 +174,8 @@ export async function placeOrder(req: Request, res: Response, next: NextFunction
           total,
           couponId: cart.couponId ?? null,
           shippingAddress: resolvedShippingAddress,
+          estimatedDeliveryText: eddResult.estimatedDeliveryText,
+          estimatedDeliveryDate: eddResult.estimatedDeliveryDate,
           notes: notes ?? null,
           status: initialStatus,
           items: {

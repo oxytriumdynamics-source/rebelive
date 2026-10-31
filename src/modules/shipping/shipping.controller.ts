@@ -3,7 +3,7 @@ import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../../config/database';
 import { env } from '../../config/env';
-import { shiprocketService } from './shiprocket.service';
+import { shiprocketService, mapShiprocketStatus } from './shiprocket.service';
 import { ValidationError, NotFoundError, UnauthorizedError } from '../../shared/errors/AppError';
 import { generateOrderNumber } from '../../shared/utils/generateOrderNumber';
 import type { PaymentMethod, OrderStatus } from '@prisma/client';
@@ -737,7 +737,7 @@ export async function initiateFastrrCheckout(req: Request, res: Response, next: 
       }
     }
 
-    const shippingAmount = subtotal >= 500 ? 0 : 60;
+    const shippingAmount = subtotal >= 500 ? 0 : 0;
     const taxAmount = Math.round((subtotal - discountAmount) * 0.18);
     const finalTotal = Math.max(0, subtotal - discountAmount + shippingAmount);
 
@@ -907,6 +907,22 @@ export async function generateFastrrToken(req: Request, res: Response, next: Nex
     for (const item of items) {
       const { product, variant } = await resolveProductAndVariant(item);
       const qty = Math.max(1, item.quantity || 1);
+
+      // Verify stock availability: Out of stock products cannot generate checkout token
+      if (variant) {
+        if (
+          variant.isActive === false ||
+          (variant.stockQty !== null && variant.stockQty !== undefined && variant.stockQty < qty)
+        ) {
+          const itemName = `${product?.name || item.name || 'Product'} · ${variant.name || (item.packSize ? `${item.packSize}-Pack` : 'Pack')}`;
+          throw new ValidationError(
+            (variant.stockQty ?? 0) <= 0
+              ? `"${itemName}" is currently OUT OF STOCK and cannot be ordered.`
+              : `Only ${variant.stockQty} unit(s) available for "${itemName}". Please reduce quantity to proceed.`
+          );
+        }
+      }
+
       const unitPrice = item.unitPrice && Number(item.unitPrice) > 0
         ? Number(item.unitPrice)
         : (variant ? variant.price : 799);
@@ -1175,7 +1191,7 @@ export async function completeFastrrCheckout(req: Request, res: Response, next: 
       }
     }
 
-    const shippingAmount = subtotal >= 500 ? 0 : 60;
+    const shippingAmount = subtotal >= 500 ? 0 : 0;
     const taxAmount = Math.round((subtotal - discountAmount) * 0.18);
     const finalTotal = Math.max(0, subtotal - discountAmount + shippingAmount);
     const orderNumber = generateOrderNumber();
@@ -1330,6 +1346,7 @@ export async function completeFastrrCheckout(req: Request, res: Response, next: 
         items: true,
         payments: true,
         statusHistory: { orderBy: { createdAt: 'desc' } },
+        user: true,
       },
     });
 
@@ -1521,7 +1538,7 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
                   units: i.quantity,
                   selling_price: i.unitPrice,
                 })),
-                paymentMethod: 'Prepaid',
+                paymentMethod: existing.payments?.[0]?.method === 'COD' ? 'COD' : 'Prepaid',
                 subtotal: existing.subtotal,
                 discountAmount: existing.discountAmount,
                 shippingAmount: existing.shippingAmount,
@@ -1955,7 +1972,7 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
     }
 
     // 7. Pricing & Order Number
-    const shippingAmount = subtotal >= 500 ? 0 : 60;
+    const shippingAmount = subtotal >= 500 ? 0 : 0;
     const paidTotalAmount =
       Number(params.totalAmount) > 0
         ? Number(params.totalAmount)
@@ -1976,16 +1993,59 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
         : params.fastrrOrderId || `FST-${Date.now().toString().slice(-6)}`;
 
     const apiPayment = fastrrResult?.payments?.[0];
-    const paymentTxnId =
-      params.payment?.transactionId ||
-      apiPayment?.pg_transaction_id ||
-      apiPayment?.txn_id ||
-      `TXN-FASTRR-${Date.now()}`;
-    const paymentMethodType =
-      params.payment?.method ||
-      apiPayment?.payment_method ||
-      fastrrResult?.payment_type ||
-      'UPI';
+    const anyParams = params as any;
+    const rawCodCheck = [
+      params.payment?.method,
+      anyParams.payment_type,
+      anyParams.order_type,
+      anyParams.orderType,
+      fastrrResult?.payment_type,
+      fastrrResult?.payment_mode,
+      fastrrResult?.order_type,
+      apiPayment?.payment_method,
+      apiPayment?.payment_mode,
+      apiPayment?.method,
+      params.notes,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toUpperCase();
+
+    const isCod =
+      anyParams.is_cod === true ||
+      anyParams.isCod === true ||
+      fastrrResult?.is_cod === true ||
+      fastrrResult?.isCod === true ||
+      rawCodCheck.includes('COD') ||
+      rawCodCheck.includes('CASH');
+
+    let resolvedPaymentMethod: PaymentMethod = 'UPI';
+    if (isCod) {
+      resolvedPaymentMethod = 'COD';
+    } else if (rawCodCheck.includes('CARD') || rawCodCheck.includes('CREDIT') || rawCodCheck.includes('DEBIT')) {
+      resolvedPaymentMethod = 'CREDIT_CARD';
+    } else if (rawCodCheck.includes('WALLET')) {
+      resolvedPaymentMethod = 'WALLET';
+    } else {
+      resolvedPaymentMethod = 'UPI';
+    }
+
+    const isPaid = !isCod;
+    const paymentTxnId = isCod
+      ? `COD-${Date.now()}`
+      : params.payment?.transactionId ||
+        apiPayment?.pg_transaction_id ||
+        apiPayment?.txn_id ||
+        `TXN-FASTRR-${Date.now()}`;
+
+    // Resolve real-time Shiprocket Estimated Delivery Date (EDD)
+    const eddResult = await shiprocketService.getEstimatedDelivery({
+      deliveryPostcode:
+        (resolvedShippingAddress as any).billing_pincode ||
+        (resolvedShippingAddress as any).postalCode,
+      isCod,
+      orderDate: new Date(),
+    });
 
     // 8. Database Transaction: Order, Items, Payment, Inventory Log
     const newOrder = await prisma.$transaction(async (tx) => {
@@ -2031,9 +2091,11 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
           shippingAddress: resolvedShippingAddress,
           status: 'CONFIRMED',
           shiprocketOrderId: String(fastrrRef),
+          estimatedDeliveryText: eddResult.estimatedDeliveryText,
+          estimatedDeliveryDate: eddResult.estimatedDeliveryDate,
           trackingNumber: `SR-${cleanPhone ? cleanPhone.slice(-6) : Date.now().toString().slice(-6)}`,
           trackingUrl: `/track-order?id=${orderNumber}`,
-          notes: `Fastrr 1-Click Instant Checkout (Fastrr Ref: ${fastrrRef}) | [Customer Phone: ${cleanPhone || rawPhone}] | [Customer Email: ${authenticEmail || email}]${params.notes ? ' | ' + params.notes : ''
+          notes: `Fastrr 1-Click Instant Checkout (Fastrr Ref: ${fastrrRef}) | [Customer Phone: ${cleanPhone || rawPhone}] | [Customer Email: ${authenticEmail || email}]${isCod ? ' | [Payment: Cash on Delivery (COD)]' : ''}${params.notes ? ' | ' + params.notes : ''
             }`,
           items: {
             create: finalItems,
@@ -2041,13 +2103,14 @@ export async function ingestOrConfirmFastrrOrder(params: IngestFastrrOrderParams
           payments: {
             create: {
               amount: finalTotal,
-              method: (paymentMethodType.toUpperCase().includes('COD') ? 'COD' : 'UPI') as PaymentMethod,
-              status: 'COMPLETED',
+              method: resolvedPaymentMethod,
+              status: isPaid ? 'COMPLETED' : 'PENDING',
               transactionId: paymentTxnId,
-              paidAt: new Date(),
+              paidAt: isPaid ? new Date() : null,
               gatewayResponse: {
                 provider: 'Shiprocket Fastrr',
                 fastrrOrderId: fastrrRef,
+                isCod,
                 rawPayload: params.payment?.gatewayResponse || apiPayment || null,
               },
             },
@@ -2247,6 +2310,7 @@ export async function trackShipment(req: Request, res: Response, next: NextFunct
         items: true,
         payments: true,
         statusHistory: { orderBy: { createdAt: 'desc' } },
+        user: true,
       },
     });
 
@@ -2259,10 +2323,29 @@ export async function trackShipment(req: Request, res: Response, next: NextFunct
           status: order.status,
           address: (order.shippingAddress as any) || undefined,
           trackingNumber: order.trackingNumber,
+          estimatedDeliveryText: (order as any).estimatedDeliveryText,
           statusHistory: order.statusHistory,
         }
         : undefined
     );
+
+    // Save order-specific EDD if not yet saved on order record
+    if (
+      order &&
+      !(order as any).estimatedDeliveryText &&
+      trackingResult.estimatedDelivery &&
+      trackingResult.estimatedDelivery !== 'N/A' &&
+      !trackingResult.estimatedDelivery.includes('Available')
+    ) {
+      await prisma.order
+        .update({
+          where: { id: order.id },
+          data: {
+            estimatedDeliveryText: trackingResult.estimatedDelivery,
+          },
+        })
+        .catch(() => {});
+    }
 
     const hasCompletedPayment = Boolean(
       order?.payments?.some((p) => p.status === 'COMPLETED') ||
@@ -2289,6 +2372,13 @@ export async function trackShipment(req: Request, res: Response, next: NextFunct
             total: order.total,
             itemsCount: order.items.reduce((acc, i) => acc + i.quantity, 0),
             shippingAddress: order.shippingAddress,
+            payments: order.payments,
+            items: order.items,
+            user: (order as any).user ? {
+              name: (order as any).user.name,
+              email: (order as any).user.email,
+              phone: (order as any).user.phone,
+            } : null,
           }
           : null,
         webhookStatus: {
@@ -2322,7 +2412,7 @@ export async function getShippingRates(_req: Request, res: Response): Promise<vo
     status: 'success',
     data: {
       freeShippingThreshold: 500,
-      standardShippingFee: 60,
+      standardShippingFee: 0,
       estimatedDeliveryWindow: '24 to 48 Hours',
       carrier: 'Shiprocket Express Priority Cold Dispatch',
       pickupLocation: 'Amritsar Cold Hub (143001)',
@@ -2393,8 +2483,8 @@ export async function handleShiprocketWebhook(req: Request, res: Response, next:
       mappedStatus = 'CANCELLED';
     }
 
-    const note = `Shiprocket Webhook: ${currentStatus}${location ? ` at ${location}` : ''}${courierName ? ` (${courierName})` : ''
-      }`;
+    const { status: friendlyStatus, description: friendlyDesc } = mapShiprocketStatus(currentStatus);
+    const note = location ? `${friendlyDesc} (at ${location})` : friendlyDesc;
 
     await prisma.order.update({
       where: { id: order.id },
@@ -2586,7 +2676,7 @@ export async function handleFastrrWebhook(req: Request, res: Response, next: Nex
                 units: i.quantity,
                 selling_price: i.unitPrice,
               })),
-              paymentMethod: 'Prepaid',
+              paymentMethod: existingOrder.payments?.[0]?.method === 'COD' ? 'COD' : 'Prepaid',
               subtotal: existingOrder.subtotal,
               discountAmount: existingOrder.discountAmount,
               shippingAmount: existingOrder.shippingAmount,
@@ -2620,7 +2710,7 @@ export async function handleFastrrWebhook(req: Request, res: Response, next: Nex
           },
         });
 
-        if (existingOrder.payments?.[0]) {
+        if (existingOrder.payments?.[0] && existingOrder.payments[0].method !== 'COD') {
           await prisma.payment.update({
             where: { id: existingOrder.payments[0].id },
             data: { status: 'COMPLETED', paidAt: new Date() },

@@ -2,6 +2,7 @@ import { prisma } from '../config/database';
 import { sendMail } from './mailer';
 import { orderConfirmationEmailHtml } from './emailTemplates';
 import { logger } from '../shared/utils/logger';
+import { shiprocketService } from '../modules/shipping/shiprocket.service';
 
 /**
  * Checks whether an email is an authentic, deliverable address
@@ -124,6 +125,129 @@ export interface SendOrderEmailOptions {
 }
 
 /**
+ * Dynamically resolves the payment method and payment status for order confirmation communications.
+ * Strictly guarantees that COD orders never display 'Verified & Paid' or fallback to UPI.
+ */
+export function resolveOrderPaymentDisplay(order: any): {
+  paymentMethod: 'UPI' | 'Cards' | 'Net Banking' | 'Wallet' | 'Cash on Delivery (COD)';
+  paymentStatus: 'Verified & Paid' | 'Payment Pending – COD' | 'Payment Pending' | 'Cancelled';
+} {
+  const payments = Array.isArray(order.payments) ? order.payments : [];
+  const notesUpper = String(order.notes || '').toUpperCase();
+  const historyNotesUpper = Array.isArray(order.statusHistory)
+    ? order.statusHistory.map((h: any) => String(h.note || '').toUpperCase()).join(' ')
+    : '';
+  const addr = (order.shippingAddress || {}) as any;
+  const addrStrUpper = JSON.stringify(addr).toUpperCase();
+
+  // 1. Thorough check for COD across payments, notes, status history, and address metadata
+  const isCodPayment = payments.some((p: any) => {
+    const m = String(p.method || '').toUpperCase();
+    const txn = String(p.transactionId || '').toUpperCase();
+    const gr = JSON.stringify(p.gatewayResponse || {}).toUpperCase();
+    return (
+      m === 'COD' ||
+      m.includes('COD') ||
+      m.includes('CASH') ||
+      txn.startsWith('COD-') ||
+      gr.includes('"COD"') ||
+      gr.includes('"CASH ON DELIVERY"') ||
+      gr.includes('"ISCOD":TRUE')
+    );
+  });
+
+  const isCodNotes =
+    notesUpper.includes('COD') ||
+    notesUpper.includes('CASH ON DELIVERY') ||
+    notesUpper.includes('CASH_ON_DELIVERY') ||
+    historyNotesUpper.includes('CASH ON DELIVERY') ||
+    historyNotesUpper.includes('COD');
+
+  const isCodAddress =
+    addr.is_cod === true ||
+    addr.isCod === true ||
+    String(addr.order_type || addr.payment_type || addr.payment_mode || addr.payment_method || '').toUpperCase().includes('COD') ||
+    addrStrUpper.includes('"PAYMENT_METHOD":"COD"') ||
+    addrStrUpper.includes('"ORDER_TYPE":"COD"') ||
+    addrStrUpper.includes('"PAYMENT_TYPE":"COD"') ||
+    addrStrUpper.includes('"IS_COD":TRUE');
+
+  const isCod = isCodPayment || isCodNotes || isCodAddress;
+
+  if (isCod) {
+    return {
+      paymentMethod: 'Cash on Delivery (COD)',
+      paymentStatus: 'Payment Pending – COD',
+    };
+  }
+
+  // 2. Identify online payment method (UPI, Cards, Net Banking, Wallet)
+  const completedPayment = payments.find((p: any) => p.status === 'COMPLETED');
+  const primaryPayment = completedPayment || payments[payments.length - 1] || payments[0];
+
+  const rawMethod = String(primaryPayment?.method || '').toUpperCase();
+  const gatewayStr = JSON.stringify(primaryPayment?.gatewayResponse || {}).toUpperCase();
+
+  let paymentMethod: 'UPI' | 'Cards' | 'Net Banking' | 'Wallet' | 'Cash on Delivery (COD)' = 'UPI';
+
+  if (
+    rawMethod.includes('CARD') ||
+    rawMethod.includes('CREDIT') ||
+    rawMethod.includes('DEBIT') ||
+    gatewayStr.includes('"CARD"') ||
+    gatewayStr.includes('CREDIT_CARD') ||
+    gatewayStr.includes('DEBIT_CARD') ||
+    gatewayStr.includes('VISA') ||
+    gatewayStr.includes('MASTERCARD') ||
+    gatewayStr.includes('RUPAY')
+  ) {
+    paymentMethod = 'Cards';
+  } else if (
+    rawMethod.includes('NET') ||
+    rawMethod.includes('BANK') ||
+    rawMethod.includes('NB') ||
+    gatewayStr.includes('"NETBANKING"') ||
+    gatewayStr.includes('"NET_BANKING"') ||
+    gatewayStr.includes('"BANK"')
+  ) {
+    paymentMethod = 'Net Banking';
+  } else if (
+    rawMethod.includes('WALLET') ||
+    gatewayStr.includes('"WALLET"') ||
+    gatewayStr.includes('PAYTM') ||
+    gatewayStr.includes('MOBIKWIK') ||
+    gatewayStr.includes('AMAZONPAY')
+  ) {
+    paymentMethod = 'Wallet';
+  } else {
+    // UPI is default for Indian direct payment integrations (GPay, PhonePe, Paytm UPI, etc.)
+    paymentMethod = 'UPI';
+  }
+
+  // 3. Status determination for online orders
+  const isPaid =
+    primaryPayment?.status === 'COMPLETED' ||
+    Boolean(primaryPayment?.paidAt) ||
+    order.status === 'CONFIRMED' ||
+    order.status === 'PROCESSING' ||
+    order.status === 'SHIPPED' ||
+    order.status === 'DELIVERED';
+
+  const isCancelled = order.status === 'CANCELLED' || primaryPayment?.status === 'FAILED';
+
+  let paymentStatus: 'Verified & Paid' | 'Payment Pending – COD' | 'Payment Pending' | 'Cancelled' = 'Verified & Paid';
+  if (isCancelled) {
+    paymentStatus = 'Cancelled';
+  } else if (isPaid) {
+    paymentStatus = 'Verified & Paid';
+  } else {
+    paymentStatus = 'Payment Pending';
+  }
+
+  return { paymentMethod, paymentStatus };
+}
+
+/**
  * Sends a high-converting, branded REBELIVE Order Confirmation Email.
  * Safe and non-blocking: never throws, logs status, and deduplicates to avoid duplicate emails.
  */
@@ -189,26 +313,39 @@ export async function sendOrderConfirmationEmail(
       order.user?.firstName ||
       'Rebel';
 
-    // Format payment info
-    const latestPayment = order.payments?.[0];
-    const rawMethod = String(latestPayment?.method || 'UPI');
-    let displayMethod = 'UPI / Instant Pay';
-    if (rawMethod.includes('COD') || rawMethod.includes('CASH')) {
-      displayMethod = 'Cash on Delivery (COD)';
-    } else if (rawMethod.includes('CARD')) {
-      displayMethod = 'Credit / Debit Card';
-    } else if (rawMethod.includes('NET') || rawMethod.includes('BANK')) {
-      displayMethod = 'Net Banking';
-    } else if (rawMethod.includes('WALLET')) {
-      displayMethod = 'Mobile Wallet';
-    }
+    // Format payment info with dynamic display mapping
+    const { paymentMethod: displayMethod, paymentStatus: displayPaymentStatus } = resolveOrderPaymentDisplay(order);
 
-    const displayPaymentStatus =
-      latestPayment?.status === 'COMPLETED' || order.status === 'CONFIRMED' || order.status === 'PROCESSING'
-        ? 'Verified & Paid'
-        : displayMethod.includes('COD')
-        ? 'Payable on Delivery'
-        : 'Payment Pending';
+    // Resolve or fetch order-specific Estimated Delivery Date (EDD)
+    let estimatedDelivery = (order as any).estimatedDeliveryText || null;
+    if (!estimatedDelivery) {
+      try {
+        const eddRes = await shiprocketService.getEstimatedDelivery({
+          deliveryPostcode: addr.billing_pincode || addr.postalCode,
+          isCod: displayMethod.includes('COD'),
+          orderDate: order.createdAt,
+        });
+        estimatedDelivery = eddRes.estimatedDeliveryText;
+        await prisma.order
+          .update({
+            where: { id: order.id },
+            data: {
+              estimatedDeliveryText: eddRes.estimatedDeliveryText,
+              estimatedDeliveryDate: eddRes.estimatedDeliveryDate,
+            },
+          })
+          .catch(() => {});
+      } catch (err) {
+        estimatedDelivery = new Date(
+          new Date(order.createdAt).getTime() + 4 * 24 * 60 * 60 * 1000
+        ).toLocaleDateString('en-IN', {
+          weekday: 'short',
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric',
+        });
+      }
+    }
 
     // Format items
     const items = (order.items || []).map((i) => ({
@@ -225,6 +362,7 @@ export async function sendOrderConfirmationEmail(
       customerName,
       orderNumber: order.orderNumber,
       orderDate: order.createdAt,
+      estimatedDelivery,
       paymentMethod: displayMethod,
       paymentStatus: displayPaymentStatus,
       items,
@@ -233,14 +371,58 @@ export async function sendOrderConfirmationEmail(
       shippingAmount: order.shippingAmount,
       total: order.total,
       shippingAddress: {
-        name: `${addr.billing_customer_name || ''} ${addr.billing_last_name || ''}`.trim() || customerName,
-        line1: addr.billing_address || addr.line1,
-        line2: addr.billing_address_2 || addr.line2,
-        city: addr.billing_city || addr.city,
-        state: addr.billing_state || addr.state,
-        postalCode: addr.billing_pincode || addr.postalCode,
-        country: addr.billing_country || addr.country || 'India',
-        phone: addr.billing_phone || addr.shipping_phone || addr.phone || order.user?.phone,
+        name:
+          addr.shipping_customer_name ||
+          addr.billing_customer_name ||
+          addr.fullName ||
+          addr.name ||
+          (addr.first_name ? `${addr.first_name} ${addr.last_name || ''}`.trim() : null) ||
+          `${addr.billing_customer_name || ''} ${addr.billing_last_name || ''}`.trim() ||
+          customerName,
+        line1:
+          addr.shipping_address ||
+          addr.billing_address ||
+          addr.line1 ||
+          addr.address1 ||
+          addr.address ||
+          '',
+        line2:
+          addr.shipping_address_2 ||
+          addr.billing_address_2 ||
+          addr.line2 ||
+          addr.address2 ||
+          addr.landmark ||
+          '',
+        city:
+          addr.shipping_city ||
+          addr.billing_city ||
+          addr.city ||
+          '',
+        state:
+          addr.shipping_state ||
+          addr.billing_state ||
+          addr.state ||
+          addr.province ||
+          '',
+        postalCode:
+          addr.shipping_pincode ||
+          addr.billing_pincode ||
+          addr.postalCode ||
+          addr.pincode ||
+          addr.postal_code ||
+          addr.zip ||
+          '',
+        country:
+          addr.shipping_country ||
+          addr.billing_country ||
+          addr.country ||
+          'India',
+        phone:
+          addr.shipping_phone ||
+          addr.billing_phone ||
+          addr.phone ||
+          order.user?.phone ||
+          '',
       },
       trackingUrl: `https://www.rebelive.com/track-order?id=${order.orderNumber}`,
     });
