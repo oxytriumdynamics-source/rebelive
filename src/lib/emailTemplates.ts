@@ -33,7 +33,15 @@ function baseWrapper(content: string): string {
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="color-scheme" content="light dark"/>
+  <meta name="supported-color-schemes" content="light dark"/>
   <title>REBELIVE</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      supported-color-schemes: light dark;
+    }
+  </style>
 </head>
 <body style="margin:0; padding:0; background:#ffffff; font-family: Arial, Helvetica, sans-serif;">
 
@@ -201,9 +209,9 @@ export function greetingEmailHtml(opts: {
     </table>`
     : `
     <!-- No persona yet - invite to take the quiz -->
-    <table cellpadding="0" cellspacing="0" style="margin:0 0 28px; width:100%; border-left:3px solid #0a0a0a;">
+    <table cellpadding="0" cellspacing="0" style="margin:0 0 28px; width:100%; background:#fbfbfb; border:1px solid #e8e8e8; border-radius:4px;">
       <tr>
-        <td style="padding:14px 18px; background:#f8f8f8;">
+        <td style="padding:14px 18px;">
           <p style="margin:0; font-size:13px; line-height:1.65; color:#444444; font-family:Arial,sans-serif;">
             <strong style="${S.strong}">Next step:</strong> Take the quiz to discover your rebel persona &mdash; APEX, CAPELLA, or AVIVA &mdash; and unlock your annual drop.
           </p>
@@ -495,7 +503,7 @@ export function orderConfirmationEmailHtml(props: OrderConfirmationEmailProps): 
       </tr>
     </table>
 
-    <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8f8f8; padding:14px 18px; border-left:3px solid #0a0a0a; margin:0 0 20px;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#fbfbfb; border:1px solid #e8e8e8; border-radius:4px; padding:16px 20px; margin:0 0 20px;">
       <tr>
         <td>
           <p style="margin:0 0 4px; font-size:12px; font-weight:700; color:#0a0a0a; font-family:Arial,sans-serif;">Need a hand?</p>
