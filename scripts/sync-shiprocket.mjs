@@ -165,7 +165,7 @@ async function main() {
       order_date: formattedDate,
       pickup_location: pickupLocation,
       channel_id: '',
-      comment: 'Rebelive Cold Dispatch - Handle with Care',
+      comment: 'Rebelive - Handle with Care',
       billing_customer_name: order.user?.firstName || 'Customer',
       billing_last_name: order.user?.lastName || 'Rebelive',
       billing_address: order.shippingAddress.line1,

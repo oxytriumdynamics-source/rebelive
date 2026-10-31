@@ -495,7 +495,7 @@ class ShiprocketService {
       order_id: params.orderNumber,
       order_date: formattedDate,
       pickup_location: pickupLocation,
-      comment: 'Rebelive Cold Dispatch - Handle with Care',
+      comment: 'Rebelive - Handle with Care',
       billing_customer_name: billingCustomerName,
       billing_last_name: billingLastName,
       billing_address: billingAddress,
